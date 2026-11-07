@@ -13,13 +13,14 @@ GET devolve:
   dados    campos do formulário (vazio até o primeiro PATCH)
   404 se o usuário ainda não tem organização
 
-PATCH body: {"dados": {"telefone": "1199999-0000", "site": null}}
+PATCH body: {"dados": {"email_alertas": "compliance@empresa.com", "setor": null}}
   - só o dono edita (membros só leem: 403)
   - só mexe em `dados`; cnpj/status/empresa nunca são alterados por aqui
-  - merge campo a campo: o que não foi enviado fica como está
+  - merge campo a campo: o que não foi enviado fica como está (uma lista é
+    substituída inteira)
   - valor null apaga o campo
-  - os campos são livres (nome em snake_case); quando o formulário estiver
-    definido, valide-os em CAMPOS_PERMITIDOS abaixo
+  - só os campos do perfil regulatório (perfil.py); campo fora da lista ou com
+    tipo errado volta 400
 """
 
 import json
@@ -29,12 +30,12 @@ from decimal import Decimal
 from botocore.exceptions import ClientError
 
 import dados as db
+import perfil
 from auth import user_id_from_event
 from dados import org_key, resp
 
-# None = aceita qualquer campo. Depois de definir o formulário, troque por um
-# conjunto, ex.: {"telefone", "email_contato", "site"}.
-CAMPOS_PERMITIDOS: set[str] | None = None
+# Campos do perfil regulatório (tipos e regras em perfil.py). None = aceita qualquer campo.
+CAMPOS_PERMITIDOS: set[str] | None = set(perfil.CAMPOS)
 
 MAX_CAMPOS = 50
 NOME_CAMPO = re.compile(r"^[a-z][a-z0-9_]{0,49}$")
@@ -78,6 +79,9 @@ def patch_usuario(user_id: str, raw_body: str | None) -> dict:
         fora = [k for k in dados if k not in CAMPOS_PERMITIDOS]
         if fora:
             return resp(400, {"erro": "campo não permitido", "campos": fora})
+    erros = perfil.validar(dados)
+    if erros:
+        return resp(400, {"erro": "valor inválido", "campos": erros})
 
     usuario = db.get(user_id) or {}
     if not usuario.get("cnpj"):

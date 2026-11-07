@@ -83,18 +83,18 @@ def run(s: Smoke, args):
     s.check("formulário começa vazio", cad.get("dados") == {}, f"dados={cad.get('dados')}")
 
     print("\n  3. formulário")
-    form = {"telefone": "11999990000", "site": "https://exemplo.com.br", "funcionarios": 12}
+    form = {"setor": "energia", "email_alertas": "alertas@exemplo.com.br", "faixa_funcionarios": "1-19"}
     code, body = http("PATCH", me, a.access_token, {"dados": form})
     s.check("PATCH salva os campos", code == 200 and body.get("dados") == form, f"{code} {body.get('dados')}")
-    code, body = http("PATCH", me, a.access_token, {"dados": {"site": None, "telefone": "11888880000"}})
-    esperado = {"telefone": "11888880000", "funcionarios": 12}
+    code, body = http("PATCH", me, a.access_token, {"dados": {"email_alertas": None, "setor": "financeiro"}})
+    esperado = {"setor": "financeiro", "faixa_funcionarios": "1-19"}
     s.check("PATCH faz merge e null apaga o campo", code == 200 and body.get("dados") == esperado,
             f"{code} {body.get('dados')}")
     code, body = http("PATCH", me, a.access_token, {"dados": {"Campo Inválido": 1}})
     s.check("PATCH com nome de campo inválido -> 400", code == 400, f"{code} {body}")
 
     print("\n  4. isolamento (B ainda sem organização)")
-    for metodo, url, corpo in (("GET", me, None), ("PATCH", me, {"dados": {"telefone": "000"}}),
+    for metodo, url, corpo in (("GET", me, None), ("PATCH", me, {"dados": {"setor": "outro"}}),
                                ("GET", membros, None), ("GET", convite, None)):
         code, body = http(metodo, url, b.access_token, corpo)
         s.check(f"B: {metodo} {url.removeprefix(s.api_url) or '/'} -> 404", code == 404, f"{code} {body}")
@@ -124,7 +124,7 @@ def run(s: Smoke, args):
     code, body = http("GET", me, b.access_token)
     s.check("B vê os mesmos dados da empresa", code == 200 and body.get("papel") == "membro"
             and body.get("dados") == esperado and body.get("cnpj") == args.cnpj, f"{code} {body}")
-    code, body = http("PATCH", me, b.access_token, {"dados": {"telefone": "000"}})
+    code, body = http("PATCH", me, b.access_token, {"dados": {"setor": "outro"}})
     s.check("B (membro) não edita -> 403", code == 403, f"{code} {body}")
     code, body = http("POST", membros, b.access_token, {"email": "x@example.com"})
     s.check("B (membro) não convida -> 403", code == 403, f"{code} {body}")
