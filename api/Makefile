@@ -3,7 +3,7 @@
 
 LAMBDAS := cnpj-cadastro
 
-.PHONY: install test smoke smoke-login clean build deploy
+.PHONY: install test smoke smoke-login seed-aurora clean build deploy
 
 install:
 	uv sync
@@ -18,6 +18,11 @@ smoke-login: install
 
 smoke: install
 	uv run python cnpj-cadastro/tests/smoke_test.py $(ARGS)
+
+# Carga da empresa de teste Aurora (KALMANTESTE100) na stack publicada. Os dados FICAM.
+# Precisa de FixturesEnabled=true na stack. Opções: make seed-aurora ARGS="--senha '...'"
+seed-aurora: install
+	uv run python cnpj-cadastro/tests/seed_aurora.py $(ARGS)
 
 clean:
 	rm -rf .venv .pytest_cache
