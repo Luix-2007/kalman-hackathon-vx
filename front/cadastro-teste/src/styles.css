@@ -49,6 +49,7 @@ h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: v
 .sub { color: var(--muted); font-size: 13px; margin: 4px 0; }
 .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 20px; margin-bottom: 16px; }
 .card.erro { background: var(--erro-bg); color: var(--erro); }
+.card.destaque { border-color: var(--primary); }
 .usuario { display: flex; gap: 8px; align-items: center; font-size: 14px; }
 label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; font-weight: 500; }
 label small { color: var(--muted); font-weight: 400; }
@@ -85,6 +86,8 @@ dd { margin: 0; }
 .badge.ok { background: var(--ok-bg); color: var(--ok); }
 .badge.aviso { background: var(--aviso-bg); color: var(--aviso); }
 .badge.erro { background: var(--erro-bg); color: var(--erro); }
+.badge:not(.ok):not(.aviso):not(.erro) { background: var(--info-bg); color: var(--text); }
+input[readonly] { background: var(--bg); color: var(--muted); }
 .tag { font-size: 11px; color: var(--primary); font-weight: 500; }
 details { margin-top: 16px; font-size: 13px; }
 summary { cursor: pointer; color: var(--muted); }

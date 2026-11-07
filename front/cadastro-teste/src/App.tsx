@@ -8,14 +8,22 @@ import {
 } from "aws-amplify/auth";
 import { useEffect, useState, type FormEvent } from "react";
 import {
+  aceitarConvite,
   aguardarConsulta,
   ApiError,
+  convidar,
   enviarCnpj,
   getCadastro,
+  getConvite,
+  getMembros,
   onRequestLog,
+  recusarConvite,
+  removerMembro,
   salvarDados,
   type Cadastro,
+  type Convite,
   type LogEntry,
+  type Membros,
 } from "./api";
 import { CAMPOS } from "./campos";
 import { config, configured } from "./config";
@@ -44,10 +52,10 @@ function formatCnpj(cnpj: string | null) {
 }
 
 const STATUS: Record<Cadastro["status"], { texto: string; cor: string }> = {
+  processando: { texto: "Consultando…", cor: "aviso" },
   ativa: { texto: "Ativa", cor: "ok" },
   inativa: { texto: "Inativa na Receita", cor: "aviso" },
   nao_encontrado: { texto: "CNPJ não encontrado", cor: "erro" },
-  cnpj_invalido: { texto: "CNPJ inválido", cor: "erro" },
 };
 
 // ---------- app ----------
@@ -81,7 +89,7 @@ export default function App() {
       <header>
         <div>
           <h1>Cadastro (teste)</h1>
-          <p className="sub">Login no Cognito → CNPJ → consulta em segundo plano → formulário</p>
+          <p className="sub">Login no Cognito → CNPJ → consulta em segundo plano → formulário → membros</p>
         </div>
         {email && (
           <div className="usuario">
@@ -216,7 +224,7 @@ function Login({ onLogin }: { onLogin: (email: string) => void }) {
   );
 }
 
-// ---------- 2. CNPJ + 3. formulário ----------
+// ---------- 2. CNPJ + 3. formulário + 4. organização ----------
 
 function Cadastrar() {
   const [cadastro, setCadastro] = useState<Cadastro | null | undefined>(undefined);
@@ -224,12 +232,16 @@ function Cadastrar() {
   const [fase, setFase] = useState<"parado" | "enviando" | "aguardando">("parado");
   const [segundos, setSegundos] = useState(0);
   const [erro, setErro] = useState("");
+  const souMembro = cadastro?.papel === "membro";
 
-  useEffect(() => {
+  const recarregar = () =>
     getCadastro().then(setCadastro).catch((e) => {
       setErro(mensagemDeErro(e));
       setCadastro(null);
     });
+
+  useEffect(() => {
+    recarregar();
   }, []);
 
   useEffect(() => {
@@ -258,15 +270,21 @@ function Cadastrar() {
 
   return (
     <>
+      {cadastro === null && <ConvitePendente onAceito={recarregar} />}
+
       <section className="card">
         <h2>2. CNPJ</h2>
+        {souMembro ? (
+          <p className="sub">Você é membro desta organização. Só o dono pode trocar o CNPJ e editar o cadastro.</p>
+        ) : (
         <form onSubmit={consultar} className="linha">
           <input placeholder="00.000.000/0001-91" value={cnpj} onChange={(e) => setCnpj(e.target.value)} required
             disabled={fase !== "parado"} />
           <button type="submit" disabled={fase !== "parado"}>
-            {fase === "enviando" ? "Enviando…" : fase === "aguardando" ? `Consultando… ${segundos}s` : cadastro ? "Consultar outro" : "Consultar"}
+            {fase === "enviando" ? "Enviando…" : fase === "aguardando" ? `Consultando… ${segundos}s` : cadastro ? "Trocar CNPJ" : "Consultar"}
           </button>
         </form>
+        )}
         {fase === "aguardando" && (
           <p className="sub">POST respondeu 202. Agora o EventBridge chama a Lambda que consulta o OpenCNPJ; o front repete o GET a cada 2s.</p>
         )}
@@ -279,9 +297,154 @@ function Cadastrar() {
           key={cadastro.consultado_em ?? ""} // recarrega o pré-preenchimento após nova consulta
           cadastro={cadastro}
           onSalvo={setCadastro}
+          somenteLeitura={souMembro}
         />
       )}
+
+      {cadastro && <Organizacao key={cadastro.cnpj} cadastro={cadastro} onSaiu={() => setCadastro(null)} />}
     </>
+  );
+}
+
+function ConvitePendente({ onAceito }: { onAceito: () => void }) {
+  const [convite, setConvite] = useState<Convite | null>(null);
+  const [ocupado, setOcupado] = useState(false);
+  const [erro, setErro] = useState("");
+
+  useEffect(() => {
+    getConvite().then(setConvite).catch((e) => setErro(mensagemDeErro(e)));
+  }, []);
+
+  async function executar(fn: () => Promise<unknown>, depois: () => void) {
+    setOcupado(true);
+    setErro("");
+    try {
+      await fn();
+      depois();
+    } catch (err) {
+      setErro(mensagemDeErro(err));
+    } finally {
+      setOcupado(false);
+    }
+  }
+
+  if (!convite && !erro) return null;
+  return (
+    <section className="card destaque">
+      <h2>Convite pendente</h2>
+      {convite && (
+        <>
+          <p>
+            <strong>{convite.convidado_por ?? "O dono"}</strong> convidou você para a organização{" "}
+            <strong>{convite.razao_social ?? formatCnpj(convite.cnpj)}</strong> ({formatCnpj(convite.cnpj)}).
+            Como membro, você vê os dados da empresa, mas não edita.
+          </p>
+          <p className="sub">Válido até {new Date(convite.expira_em * 1000).toLocaleString("pt-BR")}.</p>
+          <div className="acoes">
+            <button disabled={ocupado} onClick={() => executar(aceitarConvite, onAceito)}>Aceitar</button>
+            <button className="link" disabled={ocupado} onClick={() => executar(recusarConvite, () => setConvite(null))}>
+              Recusar
+            </button>
+          </div>
+        </>
+      )}
+      {erro && <p className="msg erro">{erro}</p>}
+    </section>
+  );
+}
+
+function Organizacao({ cadastro, onSaiu }: { cadastro: Cadastro; onSaiu: () => void }) {
+  const [org, setOrg] = useState<Membros | null>(null);
+  const [email, setEmail] = useState("");
+  const [ocupado, setOcupado] = useState(false);
+  const [msg, setMsg] = useState<{ tipo: "ok" | "erro"; texto: string } | null>(null);
+  const souDono = cadastro.papel === "dono";
+
+  const carregar = () => getMembros().then(setOrg).catch((e) => setMsg({ tipo: "erro", texto: mensagemDeErro(e) }));
+  useEffect(() => {
+    carregar();
+  }, []);
+
+  async function executar(fn: () => Promise<unknown>, ok: string, depois: () => unknown = carregar) {
+    setOcupado(true);
+    setMsg(null);
+    try {
+      await fn();
+      setMsg({ tipo: "ok", texto: ok });
+      await depois();
+    } catch (err) {
+      setMsg({ tipo: "erro", texto: mensagemDeErro(err) });
+    } finally {
+      setOcupado(false);
+    }
+  }
+
+  function enviarConvite(e: FormEvent) {
+    e.preventDefault();
+    executar(() => convidar(email.trim()), `Convite criado. Avise ${email.trim()} para criar a conta com esse e-mail.`,
+      () => { setEmail(""); return carregar(); });
+  }
+
+  return (
+    <section className="card">
+      <h2>4. Organização</h2>
+      <p className="sub">
+        {souDono
+          ? "Você é o dono. Convide pessoas pelo e-mail: elas veem os dados da empresa, mas não editam."
+          : "Você é membro: vê os dados da empresa, mas não edita."}
+      </p>
+      {org && (
+        <table>
+          <tbody>
+            <tr>
+              <td>{org.dono.email ?? org.dono.user_id}</td>
+              <td><span className="badge ok">dono</span></td>
+              <td></td>
+            </tr>
+            {org.membros.map((m) => (
+              <tr key={m.user_id}>
+                <td>{m.email}</td>
+                <td><span className="badge">membro</span></td>
+                <td>
+                  {souDono && (
+                    <button className="link" disabled={ocupado}
+                      onClick={() => executar(() => removerMembro(m.user_id), `${m.email} removido.`)}>
+                      Remover
+                    </button>
+                  )}
+                  {m.user_id === cadastro.user_id && (
+                    <button className="link" disabled={ocupado}
+                      onClick={() => executar(() => removerMembro(m.user_id), "Você saiu da organização.", onSaiu)}>
+                      Sair da organização
+                    </button>
+                  )}
+                </td>
+              </tr>
+            ))}
+            {org.convites?.map((c) => (
+              <tr key={c.email}>
+                <td>{c.email}</td>
+                <td><span className="badge aviso">convite pendente</span></td>
+                <td>
+                  <button className="link" disabled={ocupado}
+                    onClick={() => executar(() => removerMembro(c.email), "Convite cancelado.")}>
+                    Cancelar
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      {souDono && (
+        <form onSubmit={enviarConvite} className="linha" style={{ marginTop: 16 }}>
+          <input type="email" required placeholder="pessoa@empresa.com" value={email}
+            onChange={(e) => setEmail(e.target.value)} disabled={ocupado} />
+          <button type="submit" disabled={ocupado}>Convidar</button>
+        </form>
+      )}
+      {msg && <p className={`msg ${msg.tipo}`} style={{ marginTop: 12 }}>{msg.texto}</p>}
+    </section>
   );
 }
 
@@ -308,7 +471,11 @@ function ResumoEmpresa({ cadastro }: { cadastro: Cadastro }) {
   );
 }
 
-function Formulario({ cadastro, onSalvo }: { cadastro: Cadastro; onSalvo: (c: Cadastro) => void }) {
+function Formulario({ cadastro, onSalvo, somenteLeitura }: {
+  cadastro: Cadastro;
+  onSalvo: (c: Cadastro) => void;
+  somenteLeitura: boolean;
+}) {
   const inicial = () =>
     Object.fromEntries(
       CAMPOS.map((c) => [c.key, String(cadastro.dados[c.key] ?? c.daReceita?.(cadastro.empresa) ?? "")]),
@@ -346,7 +513,7 @@ function Formulario({ cadastro, onSalvo }: { cadastro: Cadastro; onSalvo: (c: Ca
           <span>
             {c.label} {daReceita && <small className="tag">da Receita</small>}
           </span>
-          <input type={c.type ?? "text"} value={valores[c.key]}
+          <input type={c.type ?? "text"} value={valores[c.key]} readOnly={somenteLeitura}
             onChange={(e) => setValores((v) => ({ ...v, [c.key]: e.target.value }))} />
         </label>
       );
@@ -360,10 +527,12 @@ function Formulario({ cadastro, onSalvo }: { cadastro: Cadastro; onSalvo: (c: Ca
         <div className="grid duas">{grupo("empresa")}</div>
         <h3>Informações adicionais</h3>
         <div className="grid duas">{grupo("adicional")}</div>
-        <div className="acoes">
-          <button type="submit" disabled={salvando}>{salvando ? "Salvando…" : "Salvar"}</button>
-          {msg && <span className={`msg ${msg.tipo}`}>{msg.texto}</span>}
-        </div>
+        {!somenteLeitura && (
+          <div className="acoes">
+            <button type="submit" disabled={salvando}>{salvando ? "Salvando…" : "Salvar"}</button>
+            {msg && <span className={`msg ${msg.tipo}`}>{msg.texto}</span>}
+          </div>
+        )}
       </form>
       <details>
         <summary>Resposta do GET /cadastro/me</summary>
