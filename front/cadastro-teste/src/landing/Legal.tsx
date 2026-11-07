@@ -5,7 +5,7 @@ import { Marca } from "../identidade/marca";
 import "./legal.css";
 
 function Layout({ titulo, outra, children }: { titulo: string; outra: { rota: string; nome: string }; children: ReactNode }) {
-  useEffect(() => { document.title = `${titulo} · Kalman`; window.scrollTo(0, 0); }, [titulo]);
+  useEffect(() => { document.title = `Kalman · ${titulo}`; window.scrollTo(0, 0); }, [titulo]);
   return (
     <div className="legal">
       <header className="topo">

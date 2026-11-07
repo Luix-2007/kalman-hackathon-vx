@@ -82,7 +82,11 @@ No celular, só o formulário, com o logo (link para `/`) no topo.
 Erros do Cognito traduzidos (senha errada, código errado/expirado, muitas tentativas, conta já existe…).
 
 ### 2. Painel (depois de entrar)
-Barra fixa: marca, nome da empresa, e-mail, Sair.
+Barra fixa: marca (link para `/`), nome da empresa, e-mail, Sair. Aba do navegador: "Kalman · Painel" (todas as abas
+seguem "Kalman · …").
+
+Empresa de referência a partir de 07/11: **Light SESA, CNPJ 60.444.437/0001-46**. Os dados dela na OpenCNPJ estão em
+`src/dados/light-opencnpj.json` (sem os sócios) e o modo demo usa esse arquivo, sem consultar nada.
 
 - **Convite recebido** (sem empresa e com convite pendente): quem convidou, cartão grafite com razão social e CNPJ,
   validade, **Aceitar convite** / Recusar. O convite é buscado antes de decidir a tela (sem isso a tela do CNPJ piscava).
@@ -90,15 +94,26 @@ Barra fixa: marca, nome da empresa, e-mail, Sair.
   consulta sai sozinha. CNPJ que já tem dono → "Este CNPJ já foi cadastrado por outra pessoa da empresa. Peça a ela um
   convite para a equipe."
 - **Consultando:** "Lendo o CNPJ na Receita" com os segundos.
-- **Dados da empresa:** cartão grafite (razão social, CNPJ, CNAE, cidade/UF, ano de início, "Trocar CNPJ" e "O Kalman
-  vai ler as normas de *atividade do CNAE* · Diário Oficial e *regulador*"; o regulador só aparece quando o CNAE o deixa
-  óbvio: ANEEL, ANP, Anatel, Banco Central, SUSEP, ANS, Anvisa, ANTAQ, ANAC, ANA). Formulário em seções: Responsável,
-  Contato, Empresa, Endereço (resumo da Receita + "Corrigir"). Salvar fixo no rodapé.
-- **Membro:** os mesmos dados, só leitura (campos em céu claro, sem Salvar, sem Trocar CNPJ, sem Corrigir) e o aviso
-  "Você é membro desta empresa: vê os dados, mas só o dono edita."
-- **Equipe:** lista com o dono (selo grafite com ponto laranja), membros e convites pendentes (com validade). O dono
-  convida pelo e-mail, remove membros e cancela convites; o membro pode sair da empresa. O convite **não envia e-mail**
-  (é assim na API): a tela avisa para combinar com a pessoa.
+- **Conferência dos dados** (no lugar do formulário): cartão grafite (razão social, CNPJ, cidade/UF, ano de início,
+  "Trocar CNPJ") e "Confira os dados da empresa", só com o que o Kalman usa para decidir quais normas valem. Tudo vem
+  da Receita e **não se edita** aqui; se estiver errado, corrige-se na Receita e "consulte de novo" refaz a consulta.
+  - **Identificação:** razão social, nome fantasia (se houver), CNPJ, matriz/filial, natureza jurídica, porte,
+    situação na Receita (e desde quando), início das atividades.
+  - **Atividades:** CNAE principal e secundários; o órgão regulador aparece quando o CNAE o deixa óbvio (ANEEL, ANP,
+    Anatel, Banco Central, SUSEP, ANS, Anvisa, ANTAQ, ANAC, ANA).
+  - **Onde atua:** sede (da Receita) e **Estados onde atua**, o único dado nosso: grade das 27 UFs, a sede marcada e
+    fixa, as outras se marcam com um clique.
+  - **Regime tributário:** Simples Nacional / MEI (ou "não optante").
+  - Rodapé: "Os dados conferem?" + **Confirmar dados**. Grava em `dados` (PATCH `/cadastro/me`, que aceita campos
+    livres): `conferido_em`, `conferido_por` (e-mail) e `ufs_atuacao` ("RJ,SP"). Depois mostra "Conferido em … por …";
+    o botão volta como "Salvar estados" se os estados mudarem.
+  - Fora da tela, de propósito: contato (e-mail, telefone), endereço detalhado, capital social e sócios. O antigo
+    formulário (`src/campos.ts`: responsável, contato, endereço) não é mais usado pela tela.
+- **Membro:** a mesma conferência, só leitura (sem Confirmar, sem Trocar CNPJ, sem "consulte de novo"), com o aviso
+  "Você é membro desta empresa: vê os dados, mas quem confirma é quem criou a conta."
+- **Equipe:** lista de e-mails, sem selos de papel; "(você)" na própria linha e "Convite pendente até dd/mm/aaaa" nos
+  convites. Quem criou a conta convida pelo e-mail, remove membros e cancela convites; o membro pode sair da empresa. O
+  convite **não envia e-mail** (é assim na API): a tela avisa para combinar com a pessoa.
 
 ## E-mail do código (Cognito)
 

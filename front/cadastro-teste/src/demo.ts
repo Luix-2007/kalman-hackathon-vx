@@ -9,48 +9,30 @@
  *
  * O modo vale para a aba inteira a partir do primeiro carregamento com ?demo (navegar entre rotas não o desliga).
  *
- * O cadastro de exemplo é o da Ampla (Enel Distribuição Rio) que está no DynamoDB, com dados públicos da Receita.
+ * A empresa de exemplo é a Light SESA (CNPJ 60.444.437/0001-46), com os dados públicos da Receita salvos em
+ * src/dados/light-opencnpj.json: nada é consultado no modo demo.
  * No build de produção o modo não existe. Para tirá-lo do projeto: apague este arquivo e as referências a
  * demoApi, demoAuth, demoAtivo, demoLogado e DEMO_EMAIL no App.tsx.
  */
-import type { Cadastro, Convite, Membros } from "./api";
+import type { Cadastro, Convite, Empresa, Membros } from "./api";
+import light from "./dados/light-opencnpj.json";
 
 const params = new URLSearchParams(location.search);
 export const demoAtivo = import.meta.env.DEV && params.has("demo");
 const modo = params.get("demo");
 export const demoLogado = demoAtivo && ["vazio", "dados", "membro", "convite"].includes(modo ?? "");
 
-export const DEMO_EMAIL = modo === "membro" || modo === "convite" ? "medicao@distribuidora-exemplo.com.br" : "regulacao@distribuidora-exemplo.com.br";
-const DONO_EMAIL = "regulacao@distribuidora-exemplo.com.br";
+export const DEMO_EMAIL = modo === "membro" || modo === "convite" ? "medicao@empresa-exemplo.com.br" : "regulacao@empresa-exemplo.com.br";
+const DONO_EMAIL = "regulacao@empresa-exemplo.com.br";
 
+/** Light SESA: dados da OpenCNPJ salvos em src/dados/light-opencnpj.json (07/11/2026, sem os sócios). */
 const EXEMPLO: Cadastro = {
   user_id: "demo",
   papel: "dono",
-  cnpj: "33050071000158",
+  cnpj: "60444437000146",
   status: "ativa",
-  consultado_em: "2026-11-07T17:58:07+00:00",
-  empresa: {
-    razao_social: "AMPLA ENERGIA E SERVICOS S.A.",
-    nome_fantasia: "ENEL DISTRIBUICAO RIO",
-    situacao_cadastral: "Ativa",
-    natureza_juridica: "Sociedade Anônima Aberta",
-    porte_empresa: "Demais",
-    data_inicio_atividade: "1966-08-01",
-    cnae_principal: "3514000",
-    cnaes: [{ codigo: "3514000", descricao: "Distribuição de energia elétrica", is_principal: true }],
-    opcao_simples: "",
-    opcao_mei: "",
-    email: "FISCPRO@ENEL.COM",
-    telefones: [{ ddd: "21", numero: "27161101", is_fax: false }],
-    tipo_logradouro: "AVENIDA",
-    logradouro: "OSCAR NIEMEYER",
-    numero: "02000",
-    complemento: "      BLOCO 1 SALA 701          PARTE",
-    bairro: "SANTO CRISTO",
-    cep: "20220297",
-    municipio: "RIO DE JANEIRO",
-    uf: "RJ",
-  },
+  consultado_em: "2026-11-07T21:30:00+00:00",
+  empresa: light as Empresa,
   dados: {},
 };
 
@@ -58,14 +40,14 @@ const daqui = (dias: number) => Math.floor(Date.now() / 1000) + dias * 86400;
 
 let atual: Cadastro | null =
   modo === "dados" ? structuredClone(EXEMPLO)
-  : modo === "membro" ? { ...structuredClone(EXEMPLO), user_id: "demo-membro", papel: "membro", dados: { responsavel_nome: "Ana Ribeiro", responsavel_cargo: "Gerente de Regulação" } }
+  : modo === "membro" ? { ...structuredClone(EXEMPLO), user_id: "demo-membro", papel: "membro", dados: { conferido_em: "2026-11-07T21:40:00+00:00", conferido_por: "regulacao@empresa-exemplo.com.br", ufs_atuacao: "RJ" } }
   : null;
 
 let equipe: Membros = {
   cnpj: EXEMPLO.cnpj!,
   dono: { user_id: "demo", email: DONO_EMAIL },
-  membros: [{ user_id: "demo-membro", email: "medicao@distribuidora-exemplo.com.br", desde: "2026-11-07T18:10:00+00:00" }],
-  convites: [{ email: "comercial@distribuidora-exemplo.com.br", criado_em: "2026-11-07T18:20:00+00:00", expira_em: daqui(7) }],
+  membros: [{ user_id: "demo-membro", email: "medicao@empresa-exemplo.com.br", desde: "2026-11-07T18:10:00+00:00" }],
+  convites: [{ email: "comercial@empresa-exemplo.com.br", criado_em: "2026-11-07T18:20:00+00:00", expira_em: daqui(7) }],
 };
 
 let convite: Convite | null = modo === "convite"

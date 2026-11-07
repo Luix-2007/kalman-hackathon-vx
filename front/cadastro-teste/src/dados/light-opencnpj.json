@@ -1,0 +1,64 @@
+{
+  "cnpj": "60444437000146",
+  "razao_social": "LIGHT SERVICOS DE ELETRICIDADE S A",
+  "nome_fantasia": "",
+  "situacao_cadastral": "Ativa",
+  "data_situacao_cadastral": "2005-11-03",
+  "matriz_filial": "Matriz",
+  "data_inicio_atividade": "1966-09-30",
+  "cnae_principal": "3514000",
+  "cnaes_secundarios": [],
+  "cnaes": [
+    {
+      "codigo": "3514000",
+      "descricao": "Distribuição de energia elétrica",
+      "is_principal": true
+    }
+  ],
+  "codigo_natureza_juridica": "2046",
+  "natureza_juridica": "Sociedade Anônima Aberta",
+  "tipo_logradouro": "AVENIDA",
+  "logradouro": "MARECHAL FLORIANO",
+  "numero": "168",
+  "complemento": "",
+  "bairro": "CENTRO",
+  "cep": "20080002",
+  "uf": "RJ",
+  "municipio": "RIO DE JANEIRO",
+  "codigo_municipio": "6001",
+  "email": "GR_REGULARIDADE_FISCAL@LIGHT.COM.BR",
+  "telefones": [
+    {
+      "ddd": "0000",
+      "numero": "00000000",
+      "is_fax": false
+    }
+  ],
+  "capital_social": "9517276181,30",
+  "qualificacao_responsavel": {
+    "codigo": "16",
+    "descricao": "Presidente"
+  },
+  "ente_federativo": "",
+  "porte_empresa": "Demais",
+  "opcao_simples": "",
+  "data_opcao_simples": "",
+  "data_exclusao_simples": "",
+  "opcao_mei": "",
+  "data_opcao_mei": "",
+  "data_exclusao_mei": "",
+  "motivo_situacao_cadastral": {
+    "codigo": "00",
+    "descricao": "SEM MOTIVO"
+  },
+  "nome_cidade_exterior": "",
+  "codigo_pais": "",
+  "pais": {
+    "codigo": "",
+    "descricao": ""
+  },
+  "situacao_especial": "",
+  "data_situacao_especial": "",
+  "lgpd_anonimizado": false,
+  "updated_at": "2026-11-01T21:47:27.1957841Z"
+}

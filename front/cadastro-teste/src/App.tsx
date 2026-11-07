@@ -13,8 +13,7 @@ import { Link, Navigate, Route, Routes, useLocation, useNavigate, useSearchParam
 import * as apiReal from "./api";
 import Landing from "./landing/Landing";
 import { Privacidade, Termos } from "./landing/Legal";
-import { ApiError, type Cadastro, type Convite, type Membros } from "./api";
-import { CAMPOS } from "./campos";
+import { ApiError, type Cadastro, type Convite, type Empresa, type Membros } from "./api";
 import { mascaraCnpj, soDigitos, useConferenciaCnpj, type ConferenciaCnpj } from "./cnpj";
 import { configured } from "./config";
 import { DEMO_EMAIL, demoApi, demoAtivo, demoAuth, demoLogado } from "./demo";
@@ -91,7 +90,7 @@ const titulo = (s?: string | null) =>
     .map((p, i) => {
       if (/^([a-z]\.){1,3}[a-z]?\.?$|^(ltda|me|epp|eireli|s\/a)\.?$/.test(p)) return p.toUpperCase(); // S.A., LTDA, ME
       return i > 0 && MINUSCULAS.has(p) ? p : p.charAt(0).toUpperCase() + p.slice(1);
-    }).join(" ");
+    }).join(" ").replace(/ S A$/, " S.A."); // a Receita escreve "S A" sem pontos
 const dataBR = (iso?: string | null) => (iso ? iso.slice(0, 10).split("-").reverse().join("/") : "");
 const dataDeEpoch = (s: number) => new Date(s * 1000).toLocaleDateString("pt-BR");
 
@@ -110,7 +109,6 @@ const REGULADORES: [prefixo: string, regulador: string][] = [
   ["351", "ANEEL"], ["06", "ANP"], ["192", "ANP"], ["61", "Anatel"], ["64", "Banco Central"], ["65", "SUSEP"],
   ["652", "ANS"], ["655", "ANS"], ["212", "Anvisa"], ["50", "ANTAQ"], ["51", "ANAC"], ["36", "ANA"], ["37", "ANA"],
 ];
-const minusculaInicial = (s: string) => (/^[A-ZÀ-Ú][a-zà-ú]/.test(s) ? s[0].toLowerCase() + s.slice(1) : s);
 const reguladorDoCnae = (cnae?: string) => {
   const d = soDigitos(cnae ?? "");
   return d ? REGULADORES.filter(([p]) => d.startsWith(p)).sort((a, b) => b[0].length - a[0].length)[0]?.[1] ?? null : null;
@@ -220,7 +218,7 @@ function Acesso({ modoInicial, onEntrar }: { modoInicial: Modo; onEntrar: (email
   const [erro, setErro] = useState("");
   const [info, setInfo] = useState(vindo?.info ?? "");
 
-  useEffect(() => { document.title = `${CABECA[modo].aba} · Kalman`; }, [modo]);
+  useEffect(() => { document.title = `Kalman · ${CABECA[modo].aba}`; }, [modo]);
   const [ocupado, setOcupado] = useState(false);
   const [tocou, setTocou] = useState<Record<string, boolean>>({});
   const [espera, setEspera] = useState(0);
@@ -477,14 +475,15 @@ function Painel({ email, onSair }: { email: string; onSair: () => void }) {
   }, []);
 
   const nome = cadastro?.empresa?.nome_fantasia || cadastro?.empresa?.razao_social;
-  useEffect(() => { document.title = nome ? `${titulo(nome)} · Kalman` : "Painel · Kalman"; }, [nome]);
+  useEffect(() => { document.title = "Kalman · Painel"; }, []);
   let corpo: ReactNode;
   if (cadastro === undefined) corpo = <div className="centro-area"><Carregando /></div>;
   else if (consultando) corpo = <Consultando />;
   else if (!cadastro && convite) corpo = <ConviteRecebido convite={convite} onAceito={() => carregar()} onRecusado={() => setConvite(null)} />;
   else if (!cadastro || trocando) corpo = <PedirCnpj erro={erro} onConsultar={(c) => consultar(c)} onCancelar={cadastro ? () => { setTrocando(false); setErro(""); } : undefined} />;
   else corpo = (
-    <Dados cadastro={cadastro} onSalvo={setCadastro} onTrocar={() => setTrocando(true)}
+    <Dados cadastro={cadastro} email={email} onSalvo={setCadastro} onTrocar={() => setTrocando(true)}
+      onReconsultar={() => cadastro.cnpj && consultar(cadastro.cnpj)}
       onSaiu={() => { setCadastro(null); carregar().catch(() => undefined); }} />
   );
 
@@ -600,57 +599,61 @@ function Consultando() {
   );
 }
 
-// grupos do formulário (as chaves vêm de campos.ts)
-const SECOES: { id: string; nome: string; texto: string; chaves: string[] }[] = [
-  { id: "responsavel", nome: "Responsável", texto: "Quem recebe os alertas.", chaves: ["responsavel_nome", "responsavel_cargo"] },
-  { id: "contato", nome: "Contato", texto: "Para avisos da conta.", chaves: ["email_contato", "telefone", "site"] },
-  { id: "empresa", nome: "Empresa", texto: "Como chamamos a empresa.", chaves: ["nome_fantasia", "funcionarios"] },
-];
-const ENDERECO = ["cep", "logradouro", "numero", "complemento", "bairro", "municipio", "uf"];
-const TITULO_CASE = new Set(["nome_fantasia", "logradouro", "complemento", "bairro", "municipio"]);
+// ─────────────────────────── conferência dos dados da empresa ───────────────────────────
+//
+// Só o que o Kalman usa para decidir quais normas valem: identificação, atividades (CNAE), onde atua e regime
+// tributário. Tudo vem da Receita e não se edita aqui (se estiver errado, corrige-se na Receita e consulta-se de novo).
+// Contato, endereço completo e sócios ficam de fora. O único dado nosso é "Estados onde atua".
+// Gravado em `dados` (PATCH /cadastro/me): conferido_em, conferido_por, ufs_atuacao ("RJ,SP").
 
-function Dados({ cadastro, onSalvo, onTrocar, onSaiu }: {
-  cadastro: Cadastro; onSalvo: (c: Cadastro) => void; onTrocar: () => void; onSaiu: () => void;
+const UFS = ["AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA", "MT", "MS", "MG", "PA", "PB", "PR", "PE", "PI",
+  "RJ", "RN", "RS", "RO", "RR", "SC", "SP", "SE", "TO"];
+
+const texto = (v: unknown) => (typeof v === "string" ? v.trim() : "");
+const dataHoraBR = (iso?: string | null) =>
+  iso ? new Date(iso).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }).replace(",", " às") : "";
+
+/** Simples Nacional e MEI pela Receita ("S" = optante). */
+function regimeTributario(e: Empresa) {
+  if (texto(e.opcao_mei) === "S") return `MEI desde ${dataBR(texto(e.data_opcao_mei))}`;
+  if (texto(e.opcao_simples) === "S") return `Simples Nacional desde ${dataBR(texto(e.data_opcao_simples))}`;
+  return "Não optante pelo Simples Nacional nem MEI";
+}
+
+/** A Receita chama de "Demais" quem não é ME nem EPP. */
+const porte = (p: string) => (p.toLowerCase() === "demais" ? "Demais (não é ME nem EPP)" : p);
+
+function Dados({ cadastro, email, onSalvo, onTrocar, onReconsultar, onSaiu }: {
+  cadastro: Cadastro; email: string; onSalvo: (c: Cadastro) => void; onTrocar: () => void; onReconsultar: () => void; onSaiu: () => void;
 }) {
   const e = cadastro.empresa;
   const leitura = cadastro.papel === "membro";
-  const inicial = useMemo(() => Object.fromEntries(CAMPOS.map((c) => {
-    if (c.key in cadastro.dados) return [c.key, String(cadastro.dados[c.key])];
-    const daReceita = c.daReceita?.(e);
-    return [c.key, daReceita ? (TITULO_CASE.has(c.key) ? titulo(daReceita) : daReceita) : ""];
-  })), [cadastro, e]);
-  const [valores, setValores] = useState<Record<string, string>>(inicial);
-  const [editarEndereco, setEditarEndereco] = useState(false);
+  const d = cadastro.dados;
+  const conferidoEm = texto(d.conferido_em);
+  const sede = texto(e.uf);
+  const salvas = useMemo(() => {
+    const lista = texto(d.ufs_atuacao).split(",").map((u) => u.trim()).filter((u) => UFS.includes(u));
+    return lista.length ? lista : sede ? [sede] : [];
+  }, [d.ufs_atuacao, sede]);
+  const [ufs, setUfs] = useState<string[]>(salvas);
   const [salvando, setSalvando] = useState(false);
   const [msg, setMsg] = useState<{ tipo: "ok" | "erro"; texto: string } | null>(null);
-  const alterado = CAMPOS.some((c) => (valores[c.key] ?? "") !== (inicial[c.key] ?? "")) || Object.keys(cadastro.dados).length === 0;
+  const mudouUfs = [...ufs].sort().join() !== [...salvas].sort().join();
 
-  const campo = (key: string) => CAMPOS.find((c) => c.key === key);
-  const input = (key: string) => {
-    const c = campo(key);
-    if (!c) return null;
-    const mono = ["cep", "numero", "uf", "telefone", "funcionarios"].includes(key);
-    return (
-      <div key={key} className={`k-campo${mono ? " k-campo--mono" : ""} c-${key}`}>
-        <label htmlFor={`f-${key}`}>{c.label}</label>
-        <input id={`f-${key}`} type={c.type ?? "text"} value={valores[key] ?? ""} readOnly={leitura}
-          placeholder={leitura ? "—" : undefined}
-          onChange={(ev) => { setValores((v) => ({ ...v, [key]: ev.target.value })); setMsg(null); }} />
-      </div>
-    );
+  const alternar = (uf: string) => {
+    if (leitura || uf === sede) return; // a sede sempre entra
+    setUfs((atual) => (atual.includes(uf) ? atual.filter((u) => u !== uf) : [...atual, uf]));
+    setMsg(null);
   };
 
-  async function salvar(ev: FormEvent) {
+  async function confirmar(ev: FormEvent) {
     ev.preventDefault();
     if (leitura) return;
     setSalvando(true); setMsg(null);
     try {
-      const dados = Object.fromEntries(CAMPOS.map((c) => {
-        const v = (valores[c.key] ?? "").trim();
-        return [c.key, v === "" ? null : c.type === "number" ? Number(v) : v];
-      }));
-      onSalvo(await api.salvarDados(dados));
-      setMsg({ tipo: "ok", texto: `Salvo às ${new Date().toLocaleTimeString("pt-BR", { timeStyle: "short" })}` });
+      const ordenadas = UFS.filter((u) => ufs.includes(u));
+      onSalvo(await api.salvarDados({ conferido_em: new Date().toISOString(), conferido_por: email, ufs_atuacao: ordenadas.join(",") }));
+      setMsg({ tipo: "ok", texto: "Dados confirmados." });
     } catch (err) {
       setMsg({ tipo: "erro", texto: mensagemDeErro(err) });
     } finally {
@@ -658,72 +661,112 @@ function Dados({ cadastro, onSalvo, onTrocar, onSaiu }: {
     }
   }
 
-  const cnae = e.cnaes?.find((c) => c.is_principal);
-  const regulador = reguladorDoCnae(cnae?.codigo ?? (e.cnae_principal as string | undefined));
-  const v = valores;
-  const enderecoResumo = [
-    [v.logradouro, v.numero?.replace(/^0+(?=\d)/, "")].filter(Boolean).join(", "),
-    v.complemento, v.bairro, [v.municipio, v.uf].filter(Boolean).join("/"),
-    v.cep ? `CEP ${soDigitos(v.cep).replace(/(\d{5})(\d{3})/, "$1-$2")}` : "",
-  ].filter(Boolean).join(" · ");
+  const cnaes = [...(e.cnaes ?? [])].sort((a, b) => Number(b.is_principal) - Number(a.is_principal));
+  const regulador = reguladorDoCnae(cnaes[0]?.codigo ?? texto(e.cnae_principal));
+  const situacao = texto(e.situacao_cadastral);
+  const desdeSituacao = dataBR(texto(e.data_situacao_cadastral));
+
+  const identificacao: [string, ReactNode][] = [
+    ["Razão social", titulo(e.razao_social)],
+    ...(texto(e.nome_fantasia) ? [["Nome fantasia", titulo(texto(e.nome_fantasia))] as [string, ReactNode]] : []),
+    ["CNPJ", <span className="k-mono">{mascaraCnpj(cadastro.cnpj ?? "")}</span>],
+    ["Estabelecimento", texto(e.matriz_filial) || "—"],
+    ["Natureza jurídica", texto(e.natureza_juridica) || "—"],
+    ["Porte", porte(texto(e.porte_empresa)) || "—"],
+    ["Situação na Receita", situacao ? `${situacao}${desdeSituacao ? ` desde ${desdeSituacao}` : ""}` : "—"],
+    ["Início das atividades", <span className="k-mono">{dataBR(texto(e.data_inicio_atividade)) || "—"}</span>],
+  ];
 
   return (
     <div className="dados">
       <section className="empresa k-pontos" aria-label="Empresa">
         <div className="empresa-topo">
-          <span className="k-rotulo">Receita Federal · {cadastro.status === "ativa" ? "ativa" : cadastro.status.replace("_", " ")}</span>
+          <span className="k-rotulo">Receita Federal · {situacao ? situacao.toLowerCase() : cadastro.status.replace("_", " ")}</span>
           {!leitura && <button type="button" className="link link-claro" onClick={onTrocar}>Trocar CNPJ</button>}
         </div>
         <h1 className="empresa-nome">{titulo(e.razao_social)}</h1>
         <div className="empresa-fichas">
           <span className="ficha k-mono">{mascaraCnpj(cadastro.cnpj ?? "")}</span>
-          {cnae && <span className="ficha"><span className="k-mono">{formatCnae(cnae.codigo)}</span> {cnae.descricao}</span>}
           {e.municipio && <span className="ficha">{titulo(e.municipio)}/{e.uf}</span>}
           {e.data_inicio_atividade && <span className="ficha">desde <span className="k-mono">{dataBR(e.data_inicio_atividade).slice(-4)}</span></span>}
         </div>
-        <div className="empresa-setor">
-          <span className="setor-ponto" aria-hidden="true" />
-          <span>
-            O Kalman vai ler as normas de <strong>{cnae?.descricao ? minusculaInicial(cnae.descricao) : "sua atividade"}</strong>
-            {regulador ? <> · Diário Oficial e {regulador}</> : <> · Diário Oficial</>}
-          </span>
-        </div>
       </section>
 
+      <div className="conferencia-cabeca">
+        <h2>Confira os dados da empresa</h2>
+        <p>
+          Vieram da Receita Federal{cadastro.consultado_em ? <> em <span className="k-mono">{dataHoraBR(cadastro.consultado_em)}</span></> : null}.
+          É com eles que o Kalman decide quais normas valem para a empresa.
+          {!leitura && <> Algo desatualizado? Corrija na Receita e <button type="button" className="link" onClick={onReconsultar}>consulte de novo</button>.</>}
+        </p>
+      </div>
+
       {leitura && (
-        <p className="nota-leitura"><span className="k-ponto" aria-hidden="true" /> Você é membro desta empresa: vê os dados, mas só o dono edita.</p>
+        <p className="nota-leitura"><span className="k-ponto" aria-hidden="true" /> Você é membro desta empresa: vê os dados, mas quem confirma é quem criou a conta.</p>
       )}
 
-      <form className="blocos" onSubmit={salvar}>
-        {SECOES.map((s) => (
-          <fieldset key={s.id} className="bloco">
-            <legend className="sr">{s.nome}</legend>
-            <div className="bloco-titulo"><h2>{s.nome}</h2><p>{s.texto}</p></div>
-            <div className="bloco-campos">{s.chaves.map(input)}</div>
-          </fieldset>
-        ))}
-        <fieldset className="bloco">
-          <legend className="sr">Endereço</legend>
-          <div className="bloco-titulo"><h2>Endereço</h2><p>Veio da Receita.</p></div>
-          <div className="bloco-campos">
-            {editarEndereco ? (
-              <div className="grade-endereco">{ENDERECO.map(input)}</div>
-            ) : (
-              <div className="resumo-endereco">
-                <span>{enderecoResumo || "Sem endereço na Receita"}</span>
-                {!leitura && <button type="button" className="link" onClick={() => setEditarEndereco(true)}>Corrigir</button>}
-              </div>
-            )}
-          </div>
-        </fieldset>
+      <form className="blocos" onSubmit={confirmar}>
+        <section className="bloco" aria-labelledby="t-identificacao">
+          <div className="bloco-titulo"><h2 id="t-identificacao">Identificação</h2><p>Quem é a empresa para a Receita.</p></div>
+          <dl className="lista-dados">
+            {identificacao.map(([rotulo, valor]) => (
+              <div key={rotulo}><dt>{rotulo}</dt><dd>{valor}</dd></div>
+            ))}
+          </dl>
+        </section>
 
-        {!leitura && (
-          <div className="salvar">
-            {msg && <span className={`salvar-msg ${msg.tipo}`} role="status">{msg.texto}</span>}
-            {!msg && alterado && <span className="salvar-msg">Confira e salve</span>}
-            <button className="k-btn" type="submit" disabled={salvando}>{salvando ? "Salvando…" : "Salvar"}</button>
+        <section className="bloco" aria-labelledby="t-atividades">
+          <div className="bloco-titulo"><h2 id="t-atividades">Atividades</h2><p>Definem os temas e os órgãos que o Kalman acompanha.</p></div>
+          <div className="atividades">
+            <ul className="cnaes">
+              {cnaes.length === 0 && <li className="cnae"><span>Sem CNAE na Receita</span></li>}
+              {cnaes.map((c) => (
+                <li key={c.codigo} className="cnae">
+                  <span className="k-mono cnae-codigo">{formatCnae(c.codigo)}</span>
+                  <span className="cnae-descricao">{c.descricao}</span>
+                  {c.is_principal && <span className="cnae-tipo">principal</span>}
+                </li>
+              ))}
+            </ul>
+            {regulador && <p className="atividades-nota">Órgão regulador do setor: <strong>{regulador}</strong>. Normas do Diário Oficial de qualquer órgão também entram.</p>}
           </div>
-        )}
+        </section>
+
+        <section className="bloco" aria-labelledby="t-onde">
+          <div className="bloco-titulo"><h2 id="t-onde">Onde atua</h2><p>Decide quais normas estaduais valem.</p></div>
+          <div className="onde">
+            <p className="onde-sede">Sede: <strong>{e.municipio ? `${titulo(e.municipio)}/${e.uf}` : "—"}</strong></p>
+            <fieldset className="ufs" disabled={leitura}>
+              <legend>{leitura ? "Estados onde atua" : "Estados onde atua (a sede já entra; marque os outros)"}</legend>
+              <div className="ufs-grade">
+                {UFS.map((uf) => (
+                  <button key={uf} type="button" className="uf" aria-pressed={ufs.includes(uf)} data-sede={uf === sede || undefined}
+                    onClick={() => alternar(uf)} title={uf === sede ? "Sede da empresa" : undefined}>{uf}</button>
+                ))}
+              </div>
+            </fieldset>
+          </div>
+        </section>
+
+        <section className="bloco" aria-labelledby="t-regime">
+          <div className="bloco-titulo"><h2 id="t-regime">Regime tributário</h2><p>Muda as obrigações fiscais.</p></div>
+          <p className="regime">{regimeTributario(e)}</p>
+        </section>
+
+        <div className="salvar">
+          {msg ? (
+            <span className={`salvar-msg ${msg.tipo}`} role="status">{msg.texto}</span>
+          ) : conferidoEm ? (
+            <span className="salvar-msg ok">Conferido em {dataHoraBR(conferidoEm)}{texto(d.conferido_por) ? ` por ${texto(d.conferido_por)}` : ""}</span>
+          ) : (
+            <span className="salvar-msg">{leitura ? "Aguardando a conferência de quem criou a conta" : "Os dados conferem?"}</span>
+          )}
+          {!leitura && (!conferidoEm || mudouUfs) && (
+            <button className="k-btn" type="submit" disabled={salvando}>
+              {salvando ? "Salvando…" : conferidoEm ? "Salvar estados" : "Confirmar dados"}
+            </button>
+          )}
+        </div>
       </form>
 
       <Equipe key={cadastro.cnpj} cadastro={cadastro} onSaiu={onSaiu} />
@@ -775,14 +818,18 @@ function Equipe({ cadastro, onSaiu }: { cadastro: Cadastro; onSaiu: () => void }
         {org && (
           <ul className="equipe-lista">
             <li className="pessoa">
-              <span className="pessoa-email">{org.dono.email ?? "Dono"}</span>
-              <span className="papel papel--dono">dono</span>
+              <span className="pessoa-email">
+                {org.dono.email ?? "Quem criou a conta"}
+                {org.dono.user_id === cadastro.user_id && <span className="pessoa-nota"> (você)</span>}
+              </span>
               <span className="pessoa-acao" />
             </li>
             {org.membros.map((m) => (
               <li className="pessoa" key={m.user_id}>
-                <span className="pessoa-email">{m.email}</span>
-                <span className="papel">membro</span>
+                <span className="pessoa-email">
+                  {m.email}
+                  {m.user_id === cadastro.user_id && <span className="pessoa-nota"> (você)</span>}
+                </span>
                 <span className="pessoa-acao">
                   {souDono && (
                     <button type="button" className="link link-pequeno" disabled={ocupado}
@@ -797,8 +844,10 @@ function Equipe({ cadastro, onSaiu }: { cadastro: Cadastro; onSaiu: () => void }
             ))}
             {org.convites?.map((c) => (
               <li className="pessoa pessoa--pendente" key={c.email}>
-                <span className="pessoa-email">{c.email}</span>
-                <span className="papel papel--pendente">convite até <span className="k-mono">{dataDeEpoch(c.expira_em)}</span></span>
+                <span className="pessoa-email">
+                  {c.email}
+                  <span className="pessoa-nota pessoa-nota--linha">Convite pendente até <span className="k-mono">{dataDeEpoch(c.expira_em)}</span></span>
+                </span>
                 <span className="pessoa-acao">
                   <button type="button" className="link link-pequeno" disabled={ocupado}
                     onClick={() => executar(() => api.removerMembro(c.email), "Convite cancelado.")}>Cancelar</button>

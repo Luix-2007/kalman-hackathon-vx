@@ -12,7 +12,9 @@ Regras do Cognito para a resposta:
     (mensagem padrão do Cognito), e o HTML não depende de nada externo.
 
 E-mail é HTML de 2005: tabelas, estilo inline, sem SVG, sem fonte obrigatória (Instrument Sans e IBM Plex Mono só
-quando o leitor tiver; senão caem em Helvetica/Arial e Consolas/Courier).
+quando o leitor tiver; senão caem em Helvetica/Arial e Consolas/Courier). Sem <title> (alguns leitores mostram o texto
+dele no topo do e-mail) e sem <h1> (alguns aplicam a fonte deles ao h1): o título é um <div> com estilo próprio.
+O logo é texto: imagem precisa de um endereço público (fica para quando o front estiver publicado).
 """
 
 from html import escape
@@ -68,7 +70,6 @@ def montar_html(titulo: str, texto: str, aviso: str, codigo: str) -> str:
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light">
 <meta name="supported-color-schemes" content="light">
-<title>{titulo}</title>
 </head>
 <body style="margin:0;padding:0;background:{CEU_CLARO};-webkit-text-size-adjust:100%;">
 <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:{CEU_CLARO};">{texto}</div>
@@ -84,7 +85,7 @@ def montar_html(titulo: str, texto: str, aviso: str, codigo: str) -> str:
       </tr></table>
     </td></tr>
     <tr><td style="background:#FFFFFF;padding:36px 32px 12px 32px;">
-      <h1 style="margin:0 0 10px 0;font-family:{SANS};font-size:26px;line-height:30px;font-weight:600;letter-spacing:-0.6px;color:{GRAFITE};">{titulo}</h1>
+      <div role="heading" aria-level="1" style="margin:0 0 10px 0;font-family:{SANS};font-size:26px;line-height:30px;font-weight:600;letter-spacing:-0.6px;color:{GRAFITE};">{titulo}</div>
       <p style="margin:0 0 24px 0;font-family:{SANS};font-size:16px;line-height:24px;color:{TINTA_2};">{texto}</p>
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
         <tr><td style="background:{CEU_CLARO};border-left:4px solid {LARANJA};border-radius:8px;padding:20px 24px;">
