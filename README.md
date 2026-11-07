@@ -73,3 +73,24 @@ await fetch(`${API_URL}/me`, { method: "PATCH", headers: auth, body: JSON.string
 ```
 
 O e-mail padrão do Cognito tem limite baixo de envios por dia. Antes de produção, configure o Amazon SES no User Pool.
+
+## front/cadastro-teste
+
+Front de **teste** do fluxo completo: login no Cognito, envio do CNPJ, espera pela consulta e formulário pré-preenchido com os dados da Receita. Foi feito com Vite, React, TypeScript e Amplify, a mesma base do Lovable. O arquivo `src/api.ts` é o cliente da API que serve de referência para o front definitivo.
+
+```bash
+make front-env     # gera front/cadastro-teste/.env com os outputs da stack (precisa de credenciais AWS)
+make front-dev     # http://localhost:5173 (porta fixa: é a que está liberada no CORS)
+make front-check   # typecheck
+```
+
+Os campos do formulário de teste ficam em `src/campos.ts`. Quando os campos reais forem definidos, troque essa lista e preencha `CAMPOS_PERMITIDOS` na API.
+
+### Front no Lovable: cuidados
+
+- **CORS:** o API Gateway só aceita a origem exata (ou `*`), sem curinga de subdomínio. Inclua a URL de preview do Lovable, a publicada (`*.lovable.app`) e o domínio próprio, se houver:
+  `sam deploy --parameter-overrides 'AllowedOrigins="http://localhost:5173,https://<preview>,https://<app>.lovable.app"'`
+- **Autenticação:** o Lovable sugere Supabase / Lovable Cloud para login. Não use. O login é o Cognito, via `aws-amplify/auth`, como em `src/App.tsx`. Os dois juntos criariam usuários em dois lugares.
+- **Configuração:** `UserPoolId`, `UserPoolClientId` e `ApiUrl` são públicos e podem ir no código. Nunca coloque credenciais AWS (access key) no front.
+- **Contrato:** sempre `Authorization: Bearer <accessToken>`. Nunca envie `user_id`. Depois do POST, repita o GET `/cadastro/me` enquanto ele responder 404. Copie o `src/api.ts`.
+
