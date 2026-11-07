@@ -1,8 +1,8 @@
 [project]
-name = "lakehouse-dou"
+name = "pipeline"
 version = "0.1.0"
-description = "Lakehouse dos atos do DOU: coleta direta da Imprensa Nacional, DuckDB e Iceberg em jobs Glue Python Shell"
-# O Glue Python Shell roda Python 3.9: manter compatibilidade e as mesmas versoes do template.yaml
+description = "ETLs do lakehouse: DuckDB e Iceberg em jobs Glue Python Shell (uma pasta por ETL, cada uma com seu template SAM)"
+# O Glue Python Shell roda Python 3.9: manter compatibilidade e as mesmas versões dos template.yaml
 requires-python = ">=3.9"
 dependencies = [
     "duckdb==1.2.2",
@@ -18,5 +18,5 @@ dev = [
 ]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["*/tests"]
 filterwarnings = ["ignore::DeprecationWarning"]

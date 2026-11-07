@@ -1,10 +1,10 @@
 # Como o DuckDB foi usado
 
 Documento sobre o papel do DuckDB no ETL. O assunto principal é o **ETL completo de quatro
-camadas**, `landing → bronze → prata → ouro`, em `etl-4-camadas/src/etl_dou.py`. O outro ETL
-do pacote, `etl-cadastro/src/etl.py`, aparece quando resolve o mesmo problema de outra forma.
+camadas**, `landing → bronze → prata → ouro`, em `dou/src/etl_dou.py`. O outro ETL
+da pasta, `cadastro/src/etl.py`, aparece quando resolve o mesmo problema de outra forma.
 
-Todos os trechos abaixo saíram do código deste pacote, não de memória.
+Todos os trechos abaixo saíram do código desta pasta, não de memória.
 
 ## As quatro camadas, em ordem
 
@@ -144,7 +144,7 @@ Iceberg; boto3 fala com as APIs da AWS.**
 
 ## Como a conexão é aberta
 
-`connect()` em `etl-cadastro/src/etl.py:117` e `etl-4-camadas/src/etl_dou.py:361`:
+`connect()` em `cadastro/src/etl.py:117` e `dou/src/etl_dou.py:361`:
 
 ```python
 con = duckdb.connect()                 # banco em memória, sem arquivo
@@ -178,7 +178,7 @@ caminho não começa com `s3://`, as extensões não são carregadas e tudo vira
 ## Leitura do export do DynamoDB
 
 O export sai em DynamoDB JSON comprimido, uma linha por item. `landing()`
-(`etl-cadastro/src/etl.py:150`):
+(`cadastro/src/etl.py:150`):
 
 ```sql
 COPY (
@@ -205,7 +205,7 @@ Dois pontos:
 
 O DynamoDB JSON embrulha todo valor num mapa de tipo: `{"S": "texto"}`, `{"M": {...}}`,
 `{"L": [...]}`. O operador `->>` do DuckDB percorre isso com JSON path. `bronze()`
-(`etl-cadastro/src/etl.py:170`):
+(`cadastro/src/etl.py:170`):
 
 ```sql
 SELECT
@@ -242,7 +242,7 @@ Detalhes que importam:
 ## Explodir lista em linhas
 
 Os sócios são uma lista dentro do item. Virar uma linha por sócio usa `UNNEST` com um cast
-para array de JSON (`etl-cadastro/src/etl.py:188`):
+para array de JSON (`cadastro/src/etl.py:188`):
 
 ```sql
 SELECT item->>'$.user_id.S'           AS user_id,
@@ -260,7 +260,7 @@ linha, sem precisar de `LEFT JOIN`.
 ## Deduplicação antes de gravar
 
 Em toda etapa que escreve Iceberg, a carga passa por uma janela para garantir uma linha por
-chave. `silver()` (`etl-cadastro/src/etl.py:246`):
+chave. `silver()` (`cadastro/src/etl.py:246`):
 
 ```sql
 SELECT * EXCLUDE (rn), '2026-11-07' AS _carga_dt FROM (
@@ -277,7 +277,7 @@ mantendo a coleta **mais antiga** para o merge ser só de inserção.
 
 ## Checagens de qualidade numa consulta só
 
-`checar_qualidade()` (`etl-cadastro/src/etl.py:229`) usa `FILTER` para contar quatro problemas
+`checar_qualidade()` (`cadastro/src/etl.py:229`) usa `FILTER` para contar quatro problemas
 diferentes numa varredura:
 
 ```sql
@@ -297,7 +297,7 @@ Gold não roda. A tabela `novos_q` aqui não existe no disco: é uma tabela Arro
 É o ponto central do desenho. O DuckDB e o PyIceberg trocam dados em Arrow, sem passar por
 arquivo nem por pandas.
 
-**Do DuckDB para o Iceberg**, `_arrow()` (`etl-cadastro/src/etl.py:134`):
+**Do DuckDB para o Iceberg**, `_arrow()` (`cadastro/src/etl.py:134`):
 
 ```python
 def _arrow(con, sql, schema):
@@ -321,7 +321,7 @@ con.unregister("usuarios")
 
 O `register` expõe uma tabela Arrow como se fosse tabela do banco, sem copiar dados. É assim
 que a Gold faz agregação sobre a Silver, e é assim que o `_so_os_novos()` dos atos
-(`etl-4-camadas/src/etl_dou.py:398`) faz anti-join contra o que já está no Iceberg:
+(`dou/src/etl_dou.py:398`) faz anti-join contra o que já está no Iceberg:
 
 ```sql
 SELECT n.* FROM novos_aj n
@@ -342,7 +342,7 @@ sócios inteira.
 
 ## Agregação na Gold
 
-`gold()` (`etl-cadastro/src/etl.py:279`) e `ouro()` (`etl-4-camadas/src/etl_dou.py:598`):
+`gold()` (`cadastro/src/etl.py:279`) e `ouro()` (`dou/src/etl_dou.py:598`):
 
 ```sql
 -- cadastro
@@ -366,7 +366,7 @@ Databricks usava `ILIKE '%Energia Elétrica%'`, que depende do acento estar lá.
 ## Escrita de Parquet em lotes
 
 A Landing dos atos recebe milhares de XML, e manter todos em memória seria arriscado.
-`_grava_lote()` (`etl-4-camadas/src/etl_dou.py:473`) monta uma tabela Arrow de 500 linhas, registra
+`_grava_lote()` (`dou/src/etl_dou.py:473`) monta uma tabela Arrow de 500 linhas, registra
 e descarrega:
 
 ```python
