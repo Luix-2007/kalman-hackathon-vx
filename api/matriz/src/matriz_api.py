@@ -1,8 +1,10 @@
 """
 API da matriz de obrigações (lê e decide sobre a gold do lakehouse, pelo Athena).
 
-    GET   /obrigacoes                     versão vigente de cada obrigação + propostas pendentes
+    GET   /obrigacoes[?em=AAAA-MM-DD]     versão vigente de cada obrigação + propostas pendentes
+                                          (com `em`: as versões em vigor naquele dia)
     GET   /obrigacoes/{id}                todas as versões e o histórico de uma obrigação
+    GET   /linha-do-tempo[?obrigacao_id=&ato_id=]   o que cada ato mudou, do mais recente ao mais antigo
     POST  /obrigacoes/{id}/decisao        {"versao": 2, "decisao": "aprovar"|"rejeitar", "comentario"?}
     GET   /tarefas[?em_risco=true&obrigacao_id=OBR-1]
     PATCH /tarefas/{id}                   {"status": "aberta"|"em_andamento"|"concluida", "evidencia_url"?}
@@ -104,6 +106,12 @@ def _obrigacao(linha: dict) -> dict:
     return o
 
 
+def _evento(linha: dict) -> dict:
+    e = dict(linha)
+    e["alteracoes"] = json.loads(e["alteracoes"]) if e.get("alteracoes") else []
+    return e
+
+
 def _tarefa(linha: dict) -> dict:
     t = dict(linha)
     if isinstance(t.get("atualizada_em"), str):
@@ -127,7 +135,14 @@ def _consultar(q: str) -> list[dict] | None:
 
 # ---------------------------------------------------------------- rotas de leitura
 
-def listar_obrigacoes(cnpj: str) -> dict:
+def listar_obrigacoes(cnpj: str, em: str | None = None) -> dict:
+    if em:
+        try:
+            dia = date.fromisoformat(em)
+        except ValueError:
+            raise ErroApi(400, "em deve ser AAAA-MM-DD") from None
+        linhas = _consultar(sql.obrigacoes_em(cnpj, dia))
+        return resp(200, {"cnpj": cnpj, "em": em, "obrigacoes": [_obrigacao(l) for l in linhas or []]})
     linhas = _consultar(sql.obrigacoes_atuais(cnpj))
     if linhas is None:
         return resp(200, {"cnpj": cnpj, "obrigacoes": [], "aviso": SEM_MATRIZ})
@@ -143,7 +158,17 @@ def detalhar_obrigacao(cnpj: str, obrigacao_id: str) -> dict:
         raise ErroApi(404, "obrigação não encontrada")
     historico = _consultar(sql.historico_da_obrigacao(cnpj, obrigacao_id)) or []
     return resp(200, {"obrigacao_id": obrigacao_id, "versoes": [_obrigacao(v) for v in versoes],
-                      "historico": historico})
+                      "historico": [_evento(h) for h in historico]})
+
+
+def linha_do_tempo(cnpj: str, params: dict) -> dict:
+    ato_id = params.get("ato_id") or None
+    if ato_id and (len(ato_id) > 200 or not re.fullmatch(r"[\w.:#/-]+", ato_id)):
+        raise ErroApi(400, "ato_id inválido")
+    linhas = _consultar(sql.linha_do_tempo(cnpj, params.get("obrigacao_id") or None, ato_id))
+    if linhas is None:
+        return resp(200, {"cnpj": cnpj, "eventos": [], "aviso": SEM_MATRIZ})
+    return resp(200, {"cnpj": cnpj, "eventos": [_evento(l) for l in linhas]})
 
 
 def listar_tarefas(cnpj: str, params: dict) -> dict:
@@ -209,7 +234,8 @@ def decidir(user_id: str, cnpj: str, papel: str, obrigacao_id: str, corpo: dict)
         sql.inserir_historico({"cnpj": cnpj, "obrigacao_id": obrigacao_id, "versao": versao,
                                "evento": "aprovacao" if decisao == "aprovar" else "rejeicao",
                                "status": alvo["status"], "origem": alvo.get("origem"), "ocorrido_em": hoje,
-                               "por": user_id,
+                               "por": user_id, "ato_id": alvo.get("alterada_por"), "ato_url": alvo.get("fonte_url"),
+                               "data_ato": alvo.get("data_ato"), "trecho_citado": alvo.get("trecho_citado"),
                                "resumo": f"{'aprovada' if decisao == 'aprovar' else 'rejeitada'} pelo dono"}),
         sql.apagar_tarefas_da_obrigacao(cnpj, obrigacao_id),
     ]
@@ -270,7 +296,9 @@ def handler(event, context=None):
         if query.get("obrigacao_id") and not sql.ID.match(query["obrigacao_id"]):
             raise ErroApi(400, "obrigacao_id inválido")
         if rota == "GET /obrigacoes":
-            return listar_obrigacoes(cnpj)
+            return listar_obrigacoes(cnpj, query.get("em"))
+        if rota == "GET /linha-do-tempo":
+            return linha_do_tempo(cnpj, query)
         if rota == "GET /obrigacoes/{id}":
             return detalhar_obrigacao(cnpj, params["id"])
         if rota == "POST /obrigacoes/{id}/decisao":

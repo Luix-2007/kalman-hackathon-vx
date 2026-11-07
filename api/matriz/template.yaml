@@ -111,6 +111,9 @@ Resources:
         Decidir:
           Type: HttpApi
           Properties: { ApiId: !Ref MatrizApi, Method: POST, Path: "/obrigacoes/{id}/decisao" }
+        LinhaDoTempo:
+          Type: HttpApi
+          Properties: { ApiId: !Ref MatrizApi, Method: GET, Path: /linha-do-tempo }
         ListarTarefas:
           Type: HttpApi
           Properties: { ApiId: !Ref MatrizApi, Method: GET, Path: /tarefas }

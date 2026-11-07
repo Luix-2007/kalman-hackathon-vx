@@ -21,9 +21,10 @@ from __future__ import annotations
 import calendar
 import hashlib
 import json
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import Dict, Iterable, List, Optional, Tuple
 
+BRASILIA = timezone(timedelta(hours=-3))
 HORIZONTE_DIAS = 365      # tarefas periódicas geradas até hoje + 12 meses
 DIAS_RISCO = 7            # faltam 7 dias ou menos -> em risco
 
@@ -325,22 +326,29 @@ class Matriz:
             "origem": base.get("origem"), "confianca": base.get("confianca"),
             "status": status, "mudanca": mudanca, "vigente": False,
             "incluida_em": em, "alterada_por": alterada_por, "proposta_id": proposta_id,
+            "data_ato": base.get("data_ato"), "vigente_de": None, "vigente_ate": None,
             "decidida_por": None, "decidida_em": None,
         })
         linha["aplica_a"] = list(linha.get("aplica_a") or [])
         linha["hash_conteudo"] = hash_conteudo(linha)
         if status == "aprovada":
             for v in anteriores:
-                v["vigente"] = False
-            linha["vigente"] = True
+                _encerrar_vigencia(v, em)
+            linha["vigente"], linha["vigente_de"] = True, em
         anteriores.append(linha)
         return linha
 
-    def _registra(self, v: dict, evento: str, em: date, por: Optional[str], resumo: str):
+    def _registra(self, v: dict, evento: str, em: date, por: Optional[str], resumo: str,
+                  alteracoes: Optional[List[dict]] = None):
+        """Uma linha da linha do tempo. O ato vem da própria versão (o mesmo vale para a
+        aprovação ou rejeição dela, que aponta para o ato que a originou)."""
         self.historico.append({
             "cnpj": v["cnpj"], "obrigacao_id": v["obrigacao_id"], "versao": v["versao"],
             "evento": evento, "status": v["status"], "origem": v.get("origem"),
             "ocorrido_em": em, "por": por, "resumo": resumo,
+            "ato_id": v.get("alterada_por"), "ato_url": v.get("fonte_url"),
+            "data_ato": v.get("data_ato"), "trecho_citado": v.get("trecho_citado"),
+            "alteracoes": json.dumps(alteracoes, ensure_ascii=False) if alteracoes else None,
         })
 
     def importacao(self, cnpj: str, linhas: Iterable[dict], em: date, arquivo: str) -> None:
@@ -351,9 +359,10 @@ class Matriz:
             mudanca = "inclusao" if atual is None else "alteracao"
             v = self._nova_versao({**o, "cnpj": cnpj, "origem": "matriz_importada"}, "aprovada",
                                   mudanca, em, f"matriz_importada:{arquivo}", None)
+            alt = _alteracoes(atual, v)
             resumo = "incluída pela matriz do cliente" if atual is None else \
-                "alterada pela matriz do cliente: " + ", ".join(_diferencas(atual, v))
-            self._registra(v, mudanca, em, arquivo, resumo)
+                "alterada pela matriz do cliente: " + ", ".join(a["campo"] for a in alt) or "sem mudança de conteúdo"
+            self._registra(v, mudanca, em, arquivo, resumo, alt)
 
     def proposta(self, c: dict, em: date) -> Optional[dict]:
         """c: candidata válida do LLM (mudanca, proposta_id, fonte_ato e campos de conteúdo)."""
@@ -372,12 +381,14 @@ class Matriz:
                 base.update({k: c[k] for k in CAMPOS_CONTEUDO if c.get(k) not in (None, "", [])})
                 base["fonte_ato"], base["fonte_url"] = c.get("fonte_ato"), c.get("fonte_url")
             base.update({"origem": "llm", "confianca": c.get("confianca")})
+        base["data_ato"] = c.get("data_ato")
         v = self._nova_versao(base, "proposta", mudanca, em, c.get("fonte_ato"), c["proposta_id"])
         anterior = self.vigente(c["cnpj"], c["obrigacao_id"])
+        alt = _alteracoes(anterior, v) if mudanca == "alteracao" else []
         resumo = {"inclusao": "nova obrigação proposta pelo LLM",
                   "revogacao": "revogação proposta pelo LLM"}.get(mudanca) or \
-            "alteração proposta pelo LLM: " + ", ".join(_diferencas(anterior, v))
-        self._registra(v, mudanca, em, c.get("fonte_ato"), resumo)
+            "alteração proposta pelo LLM: " + ", ".join(a["campo"] for a in alt) or "sem mudança de conteúdo"
+        self._registra(v, mudanca, em, c.get("fonte_ato"), resumo, alt)
         return v
 
     def decisao(self, cnpj: str, obrigacao_id: str, versao: int, decisao: str,
@@ -388,32 +399,52 @@ class Matriz:
             return None
         aplicar_decisao(vs, alvo, decisao, usuario, em)
         evento = "aprovacao" if decisao == "aprovar" else "rejeicao"
-        self._registra(alvo, evento, _so_data(em), usuario,
+        self._registra(alvo, evento, data_brasilia(em), usuario,
                        f"{'aprovada' if decisao == 'aprovar' else 'rejeitada'} pelo dono")
         return alvo
 
 
+def data_brasilia(ts) -> date:
+    """Dia em Brasília. Datetime sem fuso é UTC (como o Athena e o PyIceberg gravam)."""
+    if isinstance(ts, datetime):
+        return ts.replace(tzinfo=timezone.utc).astimezone(BRASILIA).date() if ts.tzinfo is None \
+            else ts.astimezone(BRASILIA).date()
+    return ts
+
+
+def _encerrar_vigencia(v: dict, dia: date) -> None:
+    if v["vigente"]:
+        v["vigente"], v["vigente_ate"] = False, dia
+
+
 def aplicar_decisao(versoes: List[dict], alvo: dict, decisao: str, usuario: Optional[str], em) -> None:
-    """Mesma transição que a API aplica com UPDATE no Athena (api/matriz/src/athena_sql.py)."""
+    """Transição de status e de vigência. O job (replay) e a API (que grava o resultado com
+    UPDATE no Athena, ver sql_matriz.atualizar_versoes) usam esta mesma função."""
+    dia = data_brasilia(em)
     alvo["decidida_por"], alvo["decidida_em"] = usuario, em
     if decisao == "rejeitar":
         alvo["status"] = "rejeitada"
         return
+    for v in versoes:
+        if v is not alvo:
+            _encerrar_vigencia(v, dia)
     if alvo["mudanca"] == "revogacao":
         alvo["status"] = "revogada"
-        for v in versoes:
-            v["vigente"] = False
         return
-    alvo["status"] = "aprovada"
+    alvo["status"], alvo["vigente"] = "aprovada", True
+    alvo["vigente_de"], alvo["vigente_ate"] = dia, None
+
+
+def vigente_em(versoes: List[dict], dia: date) -> Optional[dict]:
+    """Versão em vigor num dia: vigente_de <= dia < vigente_ate (sem fim = ainda vigente)."""
     for v in versoes:
-        v["vigente"] = v is alvo
+        if v.get("vigente_de") and v["vigente_de"] <= dia and (v.get("vigente_ate") is None or dia < v["vigente_ate"]):
+            return v
+    return None
 
 
-def _so_data(em) -> date:
-    return em.date() if hasattr(em, "date") and callable(em.date) else em
-
-
-def _diferencas(antes: Optional[dict], depois: dict) -> List[str]:
+def _alteracoes(antes: Optional[dict], depois: dict) -> List[dict]:
+    """O que mudou entre duas versões: [{"campo", "antes", "depois"}], só campos de conteúdo."""
     if antes is None:
         return []
     mudou = []
@@ -422,5 +453,5 @@ def _diferencas(antes: Optional[dict], depois: dict) -> List[str]:
         if k == "aplica_a":
             a, d = sorted(a or []), sorted(d or [])
         if a != d:
-            mudou.append(k)
-    return mudou or ["sem mudança de conteúdo"]
+            mudou.append({"campo": k, "antes": a, "depois": d})
+    return mudou
