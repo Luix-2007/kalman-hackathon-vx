@@ -1,0 +1,35 @@
+{
+  "ato_id": "dou-2026-11-07-s1-000013",
+  "ato_url": "https://www.in.gov.br/",
+  "data_publicacao": "2026-11-07",
+  "orgao_emissor": "ANEEL",
+  "_fixture": "ato fictício para a demonstração do Kalman",
+  "propostas": [
+    {
+      "cnpj": "KALMANTESTE100",
+      "tipo": "alteracao",
+      "obrigacao_id_alvo": "OBR-013",
+      "titulo": "Entregar à ANEEL as Demonstrações Contábeis Regulatórias (DCR) auditadas",
+      "fonte_dispositivo": "art. 2º",
+      "trecho_citado": "As Demonstrações Contábeis Regulatórias auditadas deverão ser entregues até 31 de março do ano seguinte ao exercício a que se referem.",
+      "tema": "contabilidade_regulatoria",
+      "aplica_a": [
+        "UN-01"
+      ],
+      "recorrencia": "periodica",
+      "periodicidade": "anual",
+      "prazo_regra": "Até 31 de março do ano seguinte ao exercício",
+      "prazo_json": [
+        {
+          "valor": "31/03",
+          "unidade": "data_fixa",
+          "referencia": "ano_seguinte_exercicio"
+        }
+      ],
+      "area_sugerida": "GCTR",
+      "evidencia": "DCR com relatório do auditor; protocolo de envio",
+      "criticidade": "alta",
+      "confianca": 0.86
+    }
+  ]
+}

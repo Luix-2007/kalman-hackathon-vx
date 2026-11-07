@@ -11,7 +11,8 @@ FRONT_TARGETS := install env dev build check clean
 
 PIPELINE_DIR := pipeline
 PIPELINE_TARGETS := install test lint deploy clean \
-	cadastro-deploy cadastro-run cadastro-verify dou-deploy dou-run dou-verify
+	cadastro-deploy cadastro-run cadastro-verify dou-deploy dou-run dou-verify \
+	matriz-deploy matriz-run matriz-verify matriz-fixture matriz-proposta-demo matriz-sync-regras
 
 .PHONY: help test $(addprefix api-,$(API_TARGETS)) $(addprefix front-,$(FRONT_TARGETS)) \
 	$(addprefix pipeline-,$(PIPELINE_TARGETS))
@@ -35,6 +36,9 @@ help:
 	@echo "  make pipeline-deploy  sam deploy do ETL do cadastro e depois do DOU"
 	@echo "  make pipeline-cadastro-run  dispara o ETL do cadastro (DATA=AAAA-MM-DD)"
 	@echo "  make pipeline-dou-run  dispara o ETL do DOU (ANO=AAAA MES=M)"
+	@echo "  make pipeline-matriz-fixture  coloca a matriz da Aurora na landing"
+	@echo "  make pipeline-matriz-run  dispara o ETL da matriz (HOJE=AAAA-MM-DD)"
+	@echo "  make pipeline-matriz-proposta-demo  proposta do DOU que altera a OBR-013"
 	@echo "  make test          roda os testes de todas as partes"
 
 $(addprefix api-,$(API_TARGETS)): api-%:

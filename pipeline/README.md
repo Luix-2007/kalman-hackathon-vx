@@ -1,29 +1,30 @@
 # pipeline: ETLs do lakehouse (Glue, DuckDB e Iceberg)
 
-Os dois ETLs que alimentam o lakehouse na AWS. Os dois rodaram ponta a ponta em 07/11/2026. O
-trabalho de embeddings, classificação por tipo e Knowledge Base ainda não está aqui.
+Os ETLs que alimentam o lakehouse na AWS: `cadastro/` e `dou/` rodaram ponta a ponta em
+07/11/2026; `matriz/` é a matriz de obrigações e tarefas (ver [matriz/README.md](matriz/README.md)).
+O trabalho de embeddings, classificação por tipo e Knowledge Base ainda não está aqui.
 
 O uso do DuckDB, que é o coração das duas pipelines, está descrito com o SQL real em
 **[DUCKDB.md](DUCKDB.md)**.
 
-## Os dois ETLs
+## Os ETLs
 
-| | `cadastro/` | `dou/` |
-|---|---|---|
-| Stack | `lakehouse-pipeline` | `lakehouse-dou` |
-| Origem | tabela DynamoDB do `api/cnpj-cadastro`, via export nativo para o S3 | ZIP mensal da Imprensa Nacional, por HTTP |
-| Etapas | `landing → bronze → silver → gold → kb_docs` | `landing → bronze → prata → ouro` |
-| Formato | Landing e Bronze em Parquet, Silver e Gold em Iceberg | Landing em Parquet, resto em Iceberg |
-| Runtime | Glue Python Shell, Python 3.9, 1 DPU | igual |
-| Engine | DuckDB 1.2.2 | igual |
-| Escrita Iceberg | PyIceberg 0.9.1 no Glue Data Catalog | igual |
-| Agendamento | todo dia às 02:00 (America/Sao_Paulo) | todo dia às 05:00 |
-| Testes | 7, sem AWS | 17, sem AWS e sem rede |
+| | `cadastro/` | `dou/` | `matriz/` |
+|---|---|---|---|
+| Stack | `lakehouse-pipeline` | `lakehouse-dou` | `lakehouse-matriz` |
+| Origem | tabela DynamoDB do `api/cnpj-cadastro`, via export nativo para o S3 | ZIP mensal da Imprensa Nacional, por HTTP | perfis do DynamoDB, matriz do cliente e propostas do LLM na landing |
+| Etapas | `landing → bronze → silver → gold → kb_docs` | `landing → bronze → prata → ouro` | `perfis → bronze → silver → gold` |
+| Formato | Landing e Bronze em Parquet, Silver e Gold em Iceberg | Landing em Parquet, resto em Iceberg | Landing em arquivos soltos, resto em Iceberg (`matriz_*`) |
+| Runtime | Glue Python Shell, Python 3.9, 1 DPU | igual | igual |
+| Engine | DuckDB 1.2.2 | igual | igual (só leitura de arquivos) |
+| Escrita Iceberg | PyIceberg 0.9.1 no Glue Data Catalog | igual | igual; a API grava decisões pelo Athena |
+| Agendamento | todo dia às 02:00 (America/Sao_Paulo) | todo dia às 05:00 | a cada hora |
+| Testes | 8, sem AWS | 17, sem AWS e sem rede | 38, sem AWS |
 
 Os dois gravam no **mesmo bucket** e no **mesmo Glue Data Catalog**, mas têm job Glue e máquina
 de estados separados. É isso que permite rodar um sem mexer no outro. O `cadastro/` é dono do
 bucket, dos databases (`landing_db`, `bronze_db`, `silver_db`, `gold_db`) e do workgroup do
-Athena; o `dou/` recebe o bucket por parâmetro.
+Athena; `dou/` e `matriz/` recebem o bucket por parâmetro.
 
 ## Onde cada arquivo roda
 
@@ -33,6 +34,8 @@ Cada script tem um runtime e uma identidade diferente.
 |---|---|---|
 | `cadastro/src/etl.py` | Glue Python Shell 3.9 | role do job Glue |
 | `dou/src/etl_dou.py` | Glue Python Shell 3.9 | role do job Glue |
+| `matriz/src/etl_matriz.py` e `regras_matriz.py` | Glue Python Shell 3.9 | role do job Glue |
+| cópia de `regras_matriz.py` em `api/matriz/src/` | AWS Lambda, Python 3.13 | role da Lambda da API |
 | `*/tests/*.py` | máquina local, Python 3.9 | nenhuma, não toca a AWS |
 | `*/scripts/verificar.py` | máquina local, Python 3.9 | suas credenciais, somente leitura |
 
@@ -59,6 +62,12 @@ pipeline/
     tests/test_etl_dou.py   com ZIP montado no próprio teste
     scripts/verificar.py
     statemachine/ template.yaml samconfig.toml Makefile
+  matriz/                   matriz de obrigações e tarefas (stack lakehouse-matriz)
+    src/etl_matriz.py       4 etapas escolhidas por --STAGE
+    src/regras_matriz.py    prazos, tarefas e versões em Python puro (o mesmo arquivo da API)
+    fixtures/aurora/        matriz.csv (22 obrigações) e a proposta da demo (OBR-013)
+    tests/                  pipeline da Aurora ponta a ponta e regras
+    statemachine/ template.yaml samconfig.toml Makefile README.md
 ```
 
 O `etl.py`, o `template.yaml` e a máquina de estados do `cadastro/` foram extraídos do que está
@@ -74,13 +83,15 @@ pelo `DefinitionSubstitutions`, como no `dou/`.
 Da raiz do repositório (`make pipeline-<alvo>`) ou de dentro de `pipeline/` (`make <alvo>`):
 
 ```bash
-make pipeline-test            # uv sync + pytest dos dois ETLs, sem AWS (24 testes)
-make pipeline-lint            # cfn-lint nos dois template.yaml
-make pipeline-deploy          # lint + sam deploy do cadastro e depois do dou
+make pipeline-test            # uv sync + pytest dos ETLs, sem AWS
+make pipeline-lint            # cfn-lint nos template.yaml
+make pipeline-deploy          # lint + sam deploy do cadastro, do dou e da matriz
 make pipeline-cadastro-run    # dispara a máquina de estados (DATA=AAAA-MM-DD para reprocessar)
 make pipeline-cadastro-verify DATA=2026-11-07
 make pipeline-dou-run         # coleta o mês atual (ANO=2026 MES=11 para reprocessar)
 make pipeline-dou-verify ANO=2026 MES=11
+make pipeline-matriz-fixture  # matriz da Aurora na landing
+make pipeline-matriz-run      # dispara a matriz (HOJE=AAAA-MM-DD para recalcular outro dia)
 make pipeline-clean
 ```
 

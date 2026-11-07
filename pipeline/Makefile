@@ -1,8 +1,8 @@
 # Ambiente Python compartilhado por todos os ETLs desta pasta (Python 3.9, igual ao Glue).
 # Cada ETL (ex.: cadastro/) tem seu template.yaml, samconfig.toml e Makefile de deploy/run.
-# A ordem importa: o dou grava no bucket criado pelo cadastro.
+# A ordem importa: dou e matriz gravam no bucket criado pelo cadastro.
 
-ETLS := cadastro dou
+ETLS := cadastro dou matriz
 
 .PHONY: install test lint deploy clean
 
@@ -28,3 +28,6 @@ cadastro-%:
 
 dou-%:
 	$(MAKE) -C dou $*
+
+matriz-%:
+	$(MAKE) -C matriz $*
