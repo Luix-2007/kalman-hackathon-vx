@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630">
+  <!-- Kalman · imagem de compartilhamento (Open Graph). Converta para PNG ao publicar (redes não leem SVG). -->
+  <rect width="1200" height="630" fill="#0E1A24"/>
+  <g fill="none" stroke-linecap="round">
+    <path d="M -20 90 C 260 90, 420 330, 760 330" stroke="#BFD9EA" stroke-opacity="0.14" stroke-width="1.6"/>
+    <path d="M -20 146 C 260 146, 420 330, 760 330" stroke="#BFD9EA" stroke-opacity="0.22" stroke-width="1.6"/>
+    <path d="M -20 202 C 260 202, 420 330, 760 330" stroke="#BFD9EA" stroke-opacity="0.3" stroke-width="1.6"/>
+    <path d="M -20 258 C 260 258, 420 330, 760 330" stroke="#BFD9EA" stroke-opacity="0.14" stroke-width="1.6"/>
+    <path d="M -20 314 C 260 314, 420 330, 760 330" stroke="#BFD9EA" stroke-opacity="0.22" stroke-width="1.6"/>
+    <path d="M -20 370 C 260 370, 420 330, 760 330" stroke="#BFD9EA" stroke-opacity="0.3" stroke-width="1.6"/>
+    <path d="M -20 426 C 260 426, 420 330, 760 330" stroke="#BFD9EA" stroke-opacity="0.14" stroke-width="1.6"/>
+    <path d="M -20 482 C 260 482, 420 330, 760 330" stroke="#BFD9EA" stroke-opacity="0.22" stroke-width="1.6"/>
+    <path d="M -20 538 C 260 538, 420 330, 760 330" stroke="#BFD9EA" stroke-opacity="0.3" stroke-width="1.6"/>
+    <path d="M -20 290 C 220 290, 330 390, 520 330 L 760 330" stroke="#FFFFFF" stroke-width="4"/>
+  </g>
+  <circle cx="772" cy="330" r="20" fill="#0E1A24"/>
+  <circle cx="772" cy="330" r="13" fill="#FF5A1F"/>
+  <g transform="translate(56 48) scale(2.4)">
+  <g transform="translate(8, 8)">
+    <rect x="1" y="1" width="38" height="38" rx="9" fill="#0E1A24" stroke="#BFD9EA" stroke-width="1.2"/>
+    <path d="M7 10 C 13 10, 16 20, 22 20" fill="none" stroke="#BFD9EA" stroke-width="1.8" stroke-linecap="round"/>
+    <path d="M7 30 C 13 30, 16 20, 22 20" fill="none" stroke="#BFD9EA" stroke-width="1.8" stroke-linecap="round"/>
+    <path d="M7 17 C 11 17, 13 23, 17 20 L 29.5 20" fill="none" stroke="#FFFFFF" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="31.5" cy="20" r="4.8" fill="#0E1A24"/>
+    <circle cx="31.5" cy="20" r="3.2" fill="#FF5A1F"/>
+  </g>
+  <g fill="#FFFFFF">
+    <path d="M62 14 H66.8 V27.2 L75.2 20.5 H81.0 L71.8 28.0 L81.6 38 H75.8 L68.2 30.2 L66.8 31.4 V38 H62 Z"/>
+    <path fill-rule="evenodd" d="M99.8 20.5 H94.8 V22.4 A7.8 8.8 0 1 0 94.8 36.1 V38 H99.8 Z M91.4 24.4 A4.4 4.8 0 1 0 91.4 34.1 A4.4 4.8 0 1 0 91.4 24.4 Z"/>
+    <path d="M104.8 14.8 L109.6 13.6 V38 H104.8 Z"/>
+    <path d="M114.6 20.5 H119.2 V22.5 C120.4 20.9 122.2 20.1 124.4 20.1 C126.8 20.1 128.6 21.1 129.6 22.9 C131.0 21.0 133.0 20.1 135.4 20.1 C139.2 20.1 141.6 22.6 141.6 26.8 V38 H136.8 V27.6 C136.8 25.3 135.6 24.1 133.7 24.1 C131.8 24.1 130.5 25.4 130.5 27.6 V38 H125.7 V27.6 C125.7 25.3 124.5 24.1 122.6 24.1 C120.7 24.1 119.4 25.4 119.4 27.6 V38 H114.6 Z"/>
+    <path fill-rule="evenodd" d="M161.4 20.5 H156.4 V22.4 A7.8 8.8 0 1 0 156.4 36.1 V38 H161.4 Z M153.0 24.4 A4.4 4.8 0 1 0 153.0 34.1 A4.4 4.8 0 1 0 153.0 24.4 Z"/>
+    <path d="M166.4 20.5 H171.0 V22.6 C172.2 21.0 174.1 20.1 176.5 20.1 C180.5 20.1 183.0 22.7 183.0 27.0 V38 H178.2 V27.8 C178.2 25.4 176.9 24.1 174.8 24.1 C172.7 24.1 171.2 25.5 171.2 27.9 V38 H166.4 Z"/>
+  </g>
+  </g>
+</svg>

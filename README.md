@@ -1,5 +1,12 @@
 # kalman-hackathon-vx
 
+## identidade-visual
+
+Marca, cores, tipografia, componentes e regras do Kalman (versão "Laudo"), prontos para qualquer parte do projeto:
+SVGs e PNGs da marca, `tokens.css` + `componentes.css` para HTML puro, tema para Tailwind v4/shadcn, `tokens.json` para
+Python e gráficos. Guia em [`identidade-visual/README.md`](identidade-visual/README.md); para ver tudo, abra
+`identidade-visual/especime.html` no navegador.
+
 ## api/cnpj-cadastro
 
 Lambda que consulta o CNPJ do usuário no [OpenCNPJ](https://api.opencnpj.org) e salva o resultado no DynamoDB. É disparada por um evento `UsuarioCadastrado` no EventBridge.

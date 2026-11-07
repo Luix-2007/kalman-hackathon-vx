@@ -1,0 +1,117 @@
+/* ═══════════════════════════════════════════════════════════════════════
+ * Kalman · base
+ * Fontes, padrões de página e utilitários da linguagem "Laudo".
+ * Ordem: tokens.css → base.css → componentes.css
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+/* Fontes (Google Fonts). Em Next.js, prefira next/font e apague esta linha (ver README). */
+@import url("https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap");
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html {
+  font-family: var(--k-fonte);
+  color: var(--k-tinta);
+  background: var(--k-branco);
+  -webkit-font-smoothing: antialiased;
+  -webkit-text-size-adjust: 100%;
+}
+body { margin: 0; font-size: var(--k-t-corpo); line-height: 1.5; }
+
+h1, h2, h3 {
+  font-weight: var(--k-peso-titulo);
+  letter-spacing: var(--k-tracking-titulo);
+  line-height: var(--k-entrelinha-titulo);
+  text-wrap: balance;
+  margin: 0;
+}
+h1 { font-size: var(--k-t-display); letter-spacing: var(--k-tracking-display); line-height: 0.98; }
+h2 { font-size: var(--k-t-h2); }
+h3 { font-size: var(--k-t-h3); letter-spacing: -0.02em; line-height: 1.15; }
+p { text-wrap: pretty; margin: 0; }
+
+:focus-visible { outline: 3px solid rgb(255 90 31 / 0.45); outline-offset: 2px; }
+
+/* ── utilitários ─────────────────────────────────────────────────────── */
+
+/* contêiner da página */
+.k-moldura { width: 100%; max-width: var(--k-largura); margin-inline: auto; padding-inline: var(--k-margem); }
+
+/* números de ato, prazos, CNPJ, artigos: sempre mono e tabulares */
+.k-mono { font-family: var(--k-fonte-mono); font-variant-numeric: tabular-nums; }
+
+/* rótulo de laudo: "01 · O PROBLEMA", "DOU · 04/11/2026 · P. 68" */
+.k-rotulo {
+  font-family: var(--k-fonte-mono);
+  font-size: var(--k-t-rotulo);
+  letter-spacing: var(--k-tracking-rotulo);
+  text-transform: uppercase;
+  color: var(--k-tinta-3);
+}
+
+/* ponto laranja: o "sinal" antes de um rótulo, ou o ponto final do título */
+.k-ponto { display: inline-block; width: 0.5rem; height: 0.5rem; border-radius: 50%; background: var(--k-laranja); }
+.k-ponto-final { color: var(--k-laranja); } /* <h1>Saiba o que fazer<span class="k-ponto-final">.</span></h1> */
+
+/* marcas de canto, como as de corte de uma prova impressa.
+ * <figure class="k-cantos"><span class="k-canto"></span>…</figure> · a cor vem de `color` */
+.k-cantos { position: relative; }
+.k-cantos::before,
+.k-cantos::after,
+.k-cantos > .k-canto::before,
+.k-cantos > .k-canto::after {
+  content: "";
+  position: absolute;
+  width: 7px;
+  height: 7px;
+  background: currentColor;
+  pointer-events: none;
+  z-index: 1;
+}
+.k-cantos::before { top: -3.5px; left: -3.5px; }
+.k-cantos::after { top: -3.5px; right: -3.5px; }
+.k-cantos > .k-canto { position: absolute; inset: 0; pointer-events: none; }
+.k-cantos > .k-canto::before { bottom: -3.5px; left: -3.5px; }
+.k-cantos > .k-canto::after { bottom: -3.5px; right: -3.5px; }
+
+/* grade de pontos (papel milimetrado) para painéis grafite */
+.k-pontos {
+  background-image: radial-gradient(rgb(191 217 234 / 0.16) 1px, transparent 1px);
+  background-size: var(--k-grade-pontos) var(--k-grade-pontos);
+}
+
+/* ── movimento ───────────────────────────────────────────────────────── */
+
+/* Entrada ao rolar (só marketing). Os filhos diretos entram em sequência, 100ms entre eles.
+ * <div class="k-revelar">…</div> + JS que adiciona data-visivel ao entrar na tela (ver README).
+ * Só esconde com JS ligado; com movimento reduzido, só opacidade. */
+@media (scripting: enabled) {
+  .k-revelar > * { opacity: 0; }
+  .k-revelar[data-visivel] > * { animation: k-aparecer var(--k-dur-entrada) var(--k-ease-out) both; }
+  .k-revelar[data-visivel] > *:nth-child(2) { animation-delay: calc(var(--k-escalonar) * 1); }
+  .k-revelar[data-visivel] > *:nth-child(3) { animation-delay: calc(var(--k-escalonar) * 2); }
+  .k-revelar[data-visivel] > *:nth-child(4) { animation-delay: calc(var(--k-escalonar) * 3); }
+  .k-revelar[data-visivel] > *:nth-child(5) { animation-delay: calc(var(--k-escalonar) * 4); }
+  .k-revelar[data-visivel] > *:nth-child(n + 6) { animation-delay: calc(var(--k-escalonar) * 5); }
+}
+@media (scripting: enabled) and (prefers-reduced-motion: no-preference) {
+  .k-revelar[data-visivel] > * { animation-name: k-aparecer-subindo; }
+}
+
+/* Entrada na carga (hero): mesma coreografia, sem depender de rolagem */
+.k-entra > * { animation: k-aparecer var(--k-dur-entrada) var(--k-ease-out) both; }
+.k-entra > *:nth-child(2) { animation-delay: calc(var(--k-escalonar) * 1); }
+.k-entra > *:nth-child(3) { animation-delay: calc(var(--k-escalonar) * 2); }
+.k-entra > *:nth-child(4) { animation-delay: calc(var(--k-escalonar) * 3); }
+@media (prefers-reduced-motion: no-preference) {
+  .k-entra > * { animation-name: k-aparecer-subindo; }
+}
+
+@keyframes k-aparecer {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes k-aparecer-subindo {
+  from { opacity: 0; transform: translateY(12px); filter: blur(4px); }
+  to { opacity: 1; transform: none; filter: none; }
+}

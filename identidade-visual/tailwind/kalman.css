@@ -1,0 +1,101 @@
+/* ═══════════════════════════════════════════════════════════════════════
+ * Kalman · tema para Tailwind CSS v4 (+ variáveis do shadcn/ui)
+ *
+ * No globals.css do app:
+ *   @import "tailwindcss";
+ *   @import "../identidade-visual/css/tokens.css";   (ajuste o caminho)
+ *   @import "../identidade-visual/tailwind/kalman.css";
+ *
+ * Gera: bg-grafite, text-laranja, bg-ceu-claro, text-tinta-2, border-linha,
+ * font-sans (Instrument Sans), font-mono (IBM Plex Mono), ease-out, rounded-card…
+ * Com next/font, defina as variáveis --font-instrument e --font-plex-mono no <html>
+ * (ver README); sem elas, cai nos nomes do Google Fonts.
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+@theme inline {
+  --color-grafite: var(--k-grafite);
+  --color-grafite-2: var(--k-grafite-2);
+  --color-grafite-3: var(--k-grafite-3);
+  --color-laranja: var(--k-laranja);
+  --color-laranja-2: var(--k-laranja-2);
+  --color-ceu: var(--k-ceu);
+  --color-ceu-claro: var(--k-ceu-claro);
+  --color-tinta: var(--k-tinta);
+  --color-tinta-2: var(--k-tinta-2);
+  --color-tinta-3: var(--k-tinta-3);
+  --color-erro: var(--k-erro);
+  --color-linha: var(--k-linha);
+  --color-linha-forte: var(--k-linha-forte);
+
+  --font-sans: var(--font-instrument, var(--k-fonte));
+  --font-mono: var(--font-plex-mono, var(--k-fonte-mono));
+  --font-heading: var(--font-instrument, var(--k-fonte));
+
+  --radius-chip: var(--k-raio-chip);
+  --radius-controle: var(--k-raio-controle);
+  --radius-card: var(--k-raio-card);
+  --radius-painel: var(--k-raio-painel);
+  --radius-bloco: var(--k-raio-bloco);
+
+  --shadow-borda: var(--k-sombra-borda);
+  --shadow-elevada: var(--k-sombra-elevada);
+
+  --ease-out: var(--k-ease-out);
+  --ease-in-out: var(--k-ease-in-out);
+
+  /* shadcn/ui: os componentes leem estas cores */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --radius-sm: calc(var(--radius) * 0.75);
+  --radius-md: var(--radius);
+  --radius-lg: calc(var(--radius) * 1.5);
+  --radius-xl: calc(var(--radius) * 1.75);
+}
+
+:root {
+  --background: var(--k-branco);
+  --foreground: var(--k-grafite);
+  --card: var(--k-branco);
+  --card-foreground: var(--k-grafite);
+  --popover: var(--k-branco);
+  --popover-foreground: var(--k-grafite);
+  --primary: var(--k-grafite);            /* botão padrão do shadcn = grafite */
+  --primary-foreground: var(--k-branco);
+  --secondary: var(--k-ceu-claro);
+  --secondary-foreground: var(--k-grafite);
+  --muted: var(--k-ceu-claro);
+  --muted-foreground: var(--k-tinta-2);
+  --accent: var(--k-ceu-claro);
+  --accent-foreground: var(--k-grafite);
+  --destructive: var(--k-erro);
+  --border: var(--k-linha);
+  --input: var(--k-linha-forte);
+  --ring: var(--k-laranja);
+  --chart-1: var(--k-laranja);   /* a série que importa */
+  --chart-2: var(--k-grafite);
+  --chart-3: var(--k-ceu);
+  --chart-4: var(--k-tinta-3);
+  --chart-5: var(--k-grafite-3);
+  --radius: var(--k-raio-controle);
+}

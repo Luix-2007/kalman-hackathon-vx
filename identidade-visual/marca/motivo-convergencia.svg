@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 560" width="800" height="560">
+  <!-- Kalman · motivo de convergência (fundo grafite). Muitas medições (céu) convergem; o traço branco
+       oscila e vira reta (o sinal) até o ponto laranja (a tarefa). Para hero, capa, slide. -->
+  <rect width="800" height="560" fill="#0E1A24"/>
+  <g fill="none" stroke-linecap="round">
+    <path d="M -20 70 C 140 70, 230 270, 430 270" stroke="#BFD9EA" stroke-opacity="0.18" stroke-width="1.4"/>
+    <path d="M -20 122 C 140 122, 230 270, 430 270" stroke="#BFD9EA" stroke-opacity="0.28" stroke-width="1.4"/>
+    <path d="M -20 174 C 140 174, 230 270, 430 270" stroke="#BFD9EA" stroke-opacity="0.38" stroke-width="1.4"/>
+    <path d="M -20 226 C 140 226, 230 270, 430 270" stroke="#BFD9EA" stroke-opacity="0.18" stroke-width="1.4"/>
+    <path d="M -20 278 C 140 278, 230 270, 430 270" stroke="#BFD9EA" stroke-opacity="0.28" stroke-width="1.4"/>
+    <path d="M -20 330 C 140 330, 230 270, 430 270" stroke="#BFD9EA" stroke-opacity="0.38" stroke-width="1.4"/>
+    <path d="M -20 382 C 140 382, 230 270, 430 270" stroke="#BFD9EA" stroke-opacity="0.18" stroke-width="1.4"/>
+    <path d="M -20 434 C 140 434, 230 270, 430 270" stroke="#BFD9EA" stroke-opacity="0.28" stroke-width="1.4"/>
+    <path d="M -20 486 C 140 486, 230 270, 430 270" stroke="#BFD9EA" stroke-opacity="0.38" stroke-width="1.4"/>
+    <path d="M -20 240 C 130 240, 190 320, 300 270 L 430 270" stroke="#FFFFFF" stroke-width="3"/>
+  </g>
+  <circle cx="438" cy="270" r="14" fill="#0E1A24"/>
+  <circle cx="438" cy="270" r="9" fill="#FF5A1F"/>
+</svg>
