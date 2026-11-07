@@ -124,8 +124,9 @@ API da **matriz de obrigações** (stack `matriz-api`): lê obrigações e taref
 
 | Rota | Body | Resposta |
 |---|---|---|
-| `GET /obrigacoes` | | versão vigente de cada obrigação e propostas do LLM aguardando decisão |
-| `GET /obrigacoes/{id}` | | todas as versões e o histórico (inclusões, alterações, aprovações) |
+| `GET /obrigacoes` | `?em=2026-11-05` | versão vigente de cada obrigação e propostas do LLM aguardando decisão. Com `em`, a matriz como estava naquele dia |
+| `GET /obrigacoes/{id}` | | todas as versões (com o período em vigor) e o histórico |
+| `GET /linha-do-tempo` | `?obrigacao_id=OBR-013&ato_id=dou-...` | o que cada ato mudou, do mais recente ao mais antigo: evento, ato (id, link, data de publicação, trecho citado) e cada campo com o valor antes e depois |
 | `POST /obrigacoes/{id}/decisao` | `{"versao": 2, "decisao": "aprovar"}` | **200** com as versões e as tarefas recalculadas. **409** se a versão já foi decidida. Só o dono (**403**) |
 | `GET /tarefas` | `?em_risco=true&obrigacao_id=OBR-013` | tarefas com vencimento, área, status e `em_risco` |
 | `PATCH /tarefas/{id}` | `{"status": "concluida", "evidencia_url": "https://..."}` | **200** com a tarefa. Só o dono (**403**) |

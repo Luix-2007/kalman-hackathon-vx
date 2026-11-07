@@ -122,3 +122,9 @@ td select { padding: 4px 6px; }
 .check { flex-direction: row; align-items: center; gap: 6px; font-weight: 400; }
 details > dl { margin-bottom: 8px; }
 table.historico { margin-top: 8px; }
+ol.linha-do-tempo { list-style: none; margin: 8px 0 0; padding: 0 0 0 12px; border-left: 2px solid var(--border); }
+li.evento { position: relative; padding: 4px 0 12px 8px; font-size: 13px; }
+li.evento::before { content: ""; position: absolute; left: -19px; top: 9px; width: 10px; height: 10px; border-radius: 50%; background: var(--border); }
+li.evento.alteracao::before, li.evento.revogacao::before { background: var(--aviso); }
+li.evento.aprovacao::before { background: var(--ok); }
+li.evento.rejeicao::before { background: var(--erro); }

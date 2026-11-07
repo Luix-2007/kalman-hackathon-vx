@@ -6,10 +6,12 @@ import { useEffect, useState } from "react";
 import { ApiError } from "./api";
 import {
   decidir,
+  getLinhaDoTempo,
   getObrigacao,
   getObrigacoes,
   getTarefas,
   mudarTarefa,
+  type Alteracao,
   type Historico,
   type Obrigacao,
   type StatusTarefa,
@@ -172,6 +174,8 @@ export function Matriz({ souMembro }: { souMembro: boolean }) {
         </table>
       </div>
 
+      <LinhaDoTempo />
+
       <h3>Obrigações vigentes</h3>
       {vigentes.map((o) => (
         <details key={o.obrigacao_id} open={aberta === o.obrigacao_id}
@@ -194,6 +198,90 @@ export function Matriz({ souMembro }: { souMembro: boolean }) {
   );
 }
 
+const EVENTO: Record<Historico["evento"], string> = {
+  inclusao: "Inclusão",
+  alteracao: "Alteração",
+  revogacao: "Revogação",
+  aprovacao: "Aprovação",
+  rejeicao: "Rejeição",
+};
+
+const CAMPO: Record<string, string> = {
+  prazo_regra: "Prazo", prazo_json: "Regra de prazo", titulo: "Título", periodicidade: "Periodicidade",
+  recorrencia: "Recorrência", area_responsavel: "Área", aplica_a: "Aplica a", criticidade: "Criticidade",
+  evidencia: "Evidência", trecho_citado: "Trecho citado", fonte_ato: "Ato", fonte_dispositivo: "Dispositivo",
+  fonte_url: "Link do ato", orgao_sigla: "Órgão", tema: "Tema",
+};
+
+const valor = (v: unknown) =>
+  v === null || v === undefined || v === "" ? "—" : Array.isArray(v) ? v.join(", ") || "—" : String(v);
+
+function Alteracoes({ itens }: { itens: Alteracao[] }) {
+  const visiveis = itens.filter((a) => !["prazo_json", "fonte_url", "trecho_citado"].includes(a.campo));
+  if (!visiveis.length) return null;
+  return (
+    <table className="historico">
+      <tbody>
+        {visiveis.map((a) => (
+          <tr key={a.campo}>
+            <td>{CAMPO[a.campo] ?? a.campo}</td>
+            <td><s>{valor(a.antes)}</s></td>
+            <td>→ <strong>{valor(a.depois)}</strong></td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+function Evento({ e, comObrigacao }: { e: Historico; comObrigacao: boolean }) {
+  const doCliente = e.origem === "matriz_importada";
+  return (
+    <li className={`evento ${e.evento}`}>
+      <div className="resumo-topo">
+        <span>
+          <strong>{dataBr(e.ocorrido_em)}</strong> · {EVENTO[e.evento]}
+          {comObrigacao && <> · {e.obrigacao_id} {e.titulo ?? ""}</>} <small className="sub">v{e.versao}</small>
+        </span>
+        <span className="sub">
+          {doCliente ? "matriz do cliente" : e.ato_url
+            ? <a href={e.ato_url} target="_blank" rel="noreferrer">{e.ato_id}</a> : e.ato_id}
+          {e.data_ato && <> · publicado em {dataBr(e.data_ato)}</>}
+        </span>
+      </div>
+      <Alteracoes itens={e.alteracoes} />
+      {e.evento === "alteracao" && e.trecho_citado && !doCliente && <blockquote>“{e.trecho_citado}”</blockquote>}
+    </li>
+  );
+}
+
+/** O que os atos mudaram na matriz da empresa, do mais recente ao mais antigo. */
+function LinhaDoTempo() {
+  const [eventos, setEventos] = useState<Historico[] | null>(null);
+  const [soAtos, setSoAtos] = useState(true);
+  const [erro, setErro] = useState("");
+  useEffect(() => {
+    getLinhaDoTempo().then((r) => setEventos(r.eventos)).catch((e) => setErro(erroDe(e)));
+  }, []);
+  const lista = (eventos ?? []).filter((e) => !soAtos || e.origem === "llm");
+  return (
+    <>
+      <div className="resumo-topo">
+        <h3>Linha do tempo</h3>
+        <label className="check">
+          <input type="checkbox" checked={soAtos} onChange={(e) => setSoAtos(e.target.checked)} /> só mudanças por atos
+        </label>
+      </div>
+      {erro && <p className="msg erro">{erro}</p>}
+      {eventos === null && !erro && <p className="sub">Carregando…</p>}
+      {eventos && !lista.length && <p className="sub">Nenhum evento.</p>}
+      <ol className="linha-do-tempo">
+        {lista.slice(0, 50).map((e, i) => <Evento key={i} e={e} comObrigacao />)}
+      </ol>
+    </>
+  );
+}
+
 function Versoes({ id }: { id: string }) {
   const [dados, setDados] = useState<{ versoes: Obrigacao[]; historico: Historico[] } | null>(null);
   const [erro, setErro] = useState("");
@@ -203,17 +291,23 @@ function Versoes({ id }: { id: string }) {
   if (erro) return <p className="msg erro">{erro}</p>;
   if (!dados) return <p className="sub">Carregando histórico…</p>;
   return (
-    <table className="historico">
-      <tbody>
-        {dados.historico.map((h, i) => (
-          <tr key={i}>
-            <td>{dataBr(h.ocorrido_em)}</td>
-            <td>v{h.versao}</td>
-            <td>{h.evento}</td>
-            <td>{h.resumo}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
+    <>
+      <table className="historico">
+        <thead><tr><th>Versão</th><th>Status</th><th>Em vigor</th><th>Prazo</th></tr></thead>
+        <tbody>
+          {dados.versoes.map((v) => (
+            <tr key={v.versao}>
+              <td>v{v.versao}</td>
+              <td>{v.status}</td>
+              <td>{v.vigente_de ? `${dataBr(v.vigente_de)} – ${v.vigente_ate ? dataBr(v.vigente_ate) : "hoje"}` : "—"}</td>
+              <td>{v.prazo_regra ?? "—"}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <ol className="linha-do-tempo">
+        {[...dados.historico].reverse().map((e, i) => <Evento key={i} e={e} comObrigacao={false} />)}
+      </ol>
+    </>
   );
 }
