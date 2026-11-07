@@ -42,7 +42,7 @@ export type Cadastro = {
   status: Status;
   consultado_em: string | null;
   empresa: Empresa;
-  dados: Record<string, string | number | boolean>;
+  dados: Record<string, unknown>; // perfil regulatório (ver campos.ts)
 };
 
 export type Membros = {
@@ -121,7 +121,7 @@ export async function enviarCnpj(cnpj: string): Promise<void> {
 }
 
 /** PATCH /cadastro/me. Só o dono (membro recebe 403). Merge campo a campo; null apaga o campo. */
-export async function salvarDados(dados: Record<string, string | number | boolean | null>): Promise<Cadastro> {
+export async function salvarDados(dados: Record<string, unknown>): Promise<Cadastro> {
   const { status, data } = await request("PATCH", "/me", { dados });
   if (status !== 200) throw new ApiError(status, data);
   return data as Cadastro;

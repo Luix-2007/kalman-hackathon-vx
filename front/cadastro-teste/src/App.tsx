@@ -25,7 +25,7 @@ import {
   type LogEntry,
   type Membros,
 } from "./api";
-import { CAMPOS } from "./campos";
+import { CAMPOS, GRUPOS, paraEnvio, valorInicial, type Campo, type Linha, type Valor } from "./campos";
 import { config, configured } from "./config";
 
 // ---------- utilidades ----------
@@ -477,56 +477,87 @@ function Formulario({ cadastro, onSalvo, somenteLeitura }: {
   somenteLeitura: boolean;
 }) {
   const inicial = () =>
-    Object.fromEntries(
-      CAMPOS.map((c) => [c.key, String(cadastro.dados[c.key] ?? c.daReceita?.(cadastro.empresa) ?? "")]),
-    );
-  const [valores, setValores] = useState<Record<string, string>>(inicial);
+    Object.fromEntries(CAMPOS.map((c) => [c.key, valorInicial(c, cadastro.dados, cadastro.empresa)])) as Record<string, Valor>;
+  const [valores, setValores] = useState<Record<string, Valor>>(inicial);
   const [salvando, setSalvando] = useState(false);
   const [msg, setMsg] = useState<{ tipo: "ok" | "erro"; texto: string } | null>(null);
+  const muda = (key: string) => (v: Valor) => setValores((atual) => ({ ...atual, [key]: v }));
 
   async function salvar(e: FormEvent) {
     e.preventDefault();
     setSalvando(true);
     setMsg(null);
     try {
-      const dados = Object.fromEntries(
-        CAMPOS.map((c) => {
-          const v = valores[c.key].trim();
-          return [c.key, v === "" ? null : c.type === "number" ? Number(v) : v]; // vazio apaga o campo
-        }),
-      );
+      const dados = Object.fromEntries(CAMPOS.map((c) => [c.key, paraEnvio(c, valores[c.key])]));
       onSalvo(await salvarDados(dados));
       setMsg({ tipo: "ok", texto: "Salvo." });
     } catch (err) {
-      setMsg({ tipo: "erro", texto: mensagemDeErro(err) });
+      const campos = err instanceof ApiError ? (err.body as { campos?: unknown })?.campos : undefined;
+      const detalhe = campos && !Array.isArray(campos)
+        ? Object.entries(campos as Record<string, string>).map(([k, v]) => `${k}: ${v}`).join("; ")
+        : "";
+      setMsg({ tipo: "erro", texto: [mensagemDeErro(err), detalhe].filter(Boolean).join(" — ") });
     } finally {
       setSalvando(false);
     }
   }
 
-  const grupo = (g: "empresa" | "adicional") =>
-    CAMPOS.filter((c) => c.grupo === g).map((c) => {
-      const salvo = c.key in cadastro.dados;
-      const daReceita = !salvo && c.daReceita?.(cadastro.empresa) !== undefined;
+  const campo = (c: Campo) => {
+    const valor = valores[c.key];
+    const daReceita = !(c.key in cadastro.dados) && "daReceita" in c && c.daReceita?.(cadastro.empresa) !== undefined;
+    const titulo = (
+      <span>
+        {c.label} {daReceita && <small className="tag">da Receita</small>}
+        {c.ajuda && <small className="ajuda">{c.ajuda}</small>}
+      </span>
+    );
+    if (c.tipo === "objetos") {
+      return (
+        <div key={c.key} className="campo-largo">
+          {titulo}
+          <Linhas campo={c} linhas={valor as Linha[]} onChange={muda(c.key)} somenteLeitura={somenteLeitura} />
+        </div>
+      );
+    }
+    if (c.tipo === "chips") {
+      return (
+        <div key={c.key} className="campo-chips">
+          {titulo}
+          <Chips valores={valor as string[]} onChange={muda(c.key)} somenteLeitura={somenteLeitura}
+            sugestoes={c.sugestoes} maiusculas={c.maiusculas} id={c.key} />
+        </div>
+      );
+    }
+    if (c.tipo === "opcoes") {
       return (
         <label key={c.key}>
-          <span>
-            {c.label} {daReceita && <small className="tag">da Receita</small>}
-          </span>
-          <input type={c.type ?? "text"} value={valores[c.key]} readOnly={somenteLeitura}
-            onChange={(e) => setValores((v) => ({ ...v, [c.key]: e.target.value }))} />
+          {titulo}
+          <select value={valor as string} disabled={somenteLeitura} onChange={(e) => muda(c.key)(e.target.value)}>
+            <option value="">—</option>
+            {c.opcoes.map((o) => <option key={o.valor} value={o.valor}>{o.rotulo}</option>)}
+          </select>
         </label>
       );
-    });
+    }
+    return (
+      <label key={c.key}>
+        {titulo}
+        <input type={c.input ?? "text"} value={valor as string} readOnly={somenteLeitura}
+          onChange={(e) => muda(c.key)(e.target.value)} />
+      </label>
+    );
+  };
 
   return (
     <section className="card">
-      <h2>3. Formulário</h2>
+      <h2>3. Perfil regulatório</h2>
       <form onSubmit={salvar}>
-        <h3>Dados da empresa</h3>
-        <div className="grid duas">{grupo("empresa")}</div>
-        <h3>Informações adicionais</h3>
-        <div className="grid duas">{grupo("adicional")}</div>
+        {GRUPOS.map(({ grupo, titulo }) => (
+          <div key={grupo}>
+            <h3>{titulo}</h3>
+            <div className="grid duas">{CAMPOS.filter((c) => c.grupo === grupo).map(campo)}</div>
+          </div>
+        ))}
         {!somenteLeitura && (
           <div className="acoes">
             <button type="submit" disabled={salvando}>{salvando ? "Salvando…" : "Salvar"}</button>
@@ -539,6 +570,98 @@ function Formulario({ cadastro, onSalvo, somenteLeitura }: {
         <pre>{JSON.stringify(cadastro, null, 2)}</pre>
       </details>
     </section>
+  );
+}
+
+/** Lista de textos como chips. Enter ou vírgula adiciona; × remove. */
+function Chips({ id, valores, onChange, somenteLeitura, sugestoes, maiusculas }: {
+  id: string;
+  valores: string[];
+  onChange: (v: string[]) => void;
+  somenteLeitura: boolean;
+  sugestoes?: string[];
+  maiusculas?: boolean;
+}) {
+  const [texto, setTexto] = useState("");
+  const adiciona = () => {
+    const novos = texto.split(",").map((t) => (maiusculas ? t.trim().toUpperCase() : t.trim())).filter(Boolean);
+    if (novos.length) onChange([...valores, ...novos.filter((n) => !valores.includes(n))]);
+    setTexto("");
+  };
+  return (
+    <div className="chips">
+      {valores.map((v) => (
+        <span key={v} className="chip">
+          {v}
+          {!somenteLeitura && (
+            <button type="button" aria-label={`remover ${v}`} onClick={() => onChange(valores.filter((x) => x !== v))}>×</button>
+          )}
+        </span>
+      ))}
+      {!somenteLeitura && (
+        <>
+          <input value={texto} list={sugestoes ? `${id}-sugestoes` : undefined} placeholder="adicionar…"
+            onChange={(e) => setTexto(e.target.value)} onBlur={adiciona}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === ",") { e.preventDefault(); adiciona(); }
+              if (e.key === "Backspace" && !texto && valores.length) onChange(valores.slice(0, -1));
+            }} />
+          {sugestoes && (
+            <datalist id={`${id}-sugestoes`}>
+              {sugestoes.filter((s) => !valores.includes(s)).map((s) => <option key={s} value={s} />)}
+            </datalist>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+/** Linhas repetíveis (unidades, outorgas, áreas): um bloco por item, com os campos das colunas. */
+function Linhas({ campo, linhas, onChange, somenteLeitura }: {
+  campo: Extract<Campo, { tipo: "objetos" }>;
+  linhas: Linha[];
+  onChange: (v: Linha[]) => void;
+  somenteLeitura: boolean;
+}) {
+  const altera = (i: number, key: string, v: string) =>
+    onChange(linhas.map((l, j) => (j === i ? { ...l, [key]: v } : l)));
+  const novoId = () => {
+    let n = linhas.length + 1;
+    const ids = new Set(linhas.map((l) => String(l.id ?? "")));
+    while (ids.has(`${campo.prefixoId}-${String(n).padStart(2, "0")}`)) n++;
+    return `${campo.prefixoId}-${String(n).padStart(2, "0")}`;
+  };
+  return (
+    <div className="linhas">
+      {linhas.length === 0 && <p className="sub">Nenhum item.</p>}
+      {linhas.map((linha, i) => (
+        <fieldset key={i} className="linha-item">
+          <div className="grid duas">
+            {campo.colunas.map((col) => {
+              const v = linha[col.key];
+              return (
+                <label key={col.key}>
+                  <span>{col.label}{col.obrigatoria && " *"}</span>
+                  <input type={col.type === "lista" ? "text" : col.type ?? "text"} readOnly={somenteLeitura}
+                    placeholder={col.placeholder} required={col.obrigatoria}
+                    value={Array.isArray(v) ? v.join(", ") : String(v ?? "")}
+                    onChange={(e) => altera(i, col.key, e.target.value)} />
+                </label>
+              );
+            })}
+          </div>
+          {!somenteLeitura && (
+            <button type="button" className="link" onClick={() => onChange(linhas.filter((_, j) => j !== i))}>Remover</button>
+          )}
+        </fieldset>
+      ))}
+      {!somenteLeitura && (
+        <button type="button" className="link" onClick={() => onChange([...linhas, { id: novoId() }])}>
+          + Adicionar {campo.label.toLowerCase()}
+        </button>
+      )}
+    </div>
   );
 }
 
