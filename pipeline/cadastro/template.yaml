@@ -380,7 +380,7 @@ Resources:
       Command:
         Name: pythonshell
         PythonVersion: '3.9'
-        ScriptLocation: s3://aws-sam-cli-managed-default-samclisourcebucket-u7efzhrdwxou/lakehouse-pipeline/d9fba9c9b996eb02d097e833be14fa2b
+        ScriptLocation: src/etl.py   # o sam deploy envia para o S3
       MaxCapacity: 1
       MaxRetries: 0
       Timeout: 60
@@ -516,9 +516,7 @@ Resources:
     Type: AWS::Serverless::StateMachine
     Properties:
       Type: STANDARD
-      DefinitionUri:
-        Bucket: aws-sam-cli-managed-default-samclisourcebucket-u7efzhrdwxou
-        Key: lakehouse-pipeline/dd2f33cda719259766954cc9b49e2604
+      DefinitionUri: statemachine/pipeline.asl.json
       DefinitionSubstitutions:
         TableArn:
           Fn::If:

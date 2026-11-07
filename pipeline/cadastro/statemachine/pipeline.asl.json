@@ -12,8 +12,8 @@
       "Type": "Pass",
       "Parameters": {
         "run_date.$": "$.run_date",
-        "kb_id": "",
-        "kb_ds": ""
+        "kb_id": "${KnowledgeBaseId}",
+        "kb_ds": "${DataSourceId}"
       },
       "Next": "PedirExport"
     },
@@ -21,8 +21,8 @@
       "Type": "Pass",
       "Parameters": {
         "run_date.$": "States.ArrayGetItem(States.StringSplit($$.Execution.StartTime, 'T'), 0)",
-        "kb_id": "",
-        "kb_ds": ""
+        "kb_id": "${KnowledgeBaseId}",
+        "kb_ds": "${DataSourceId}"
       },
       "Next": "PedirExport"
     },
@@ -30,8 +30,8 @@
       "Type": "Task",
       "Resource": "arn:aws:states:::aws-sdk:dynamodb:exportTableToPointInTime",
       "Parameters": {
-        "TableArn": "arn:aws:dynamodb:us-east-1:520499255485:table/cnpj-cadastro-UsuariosCnpjTable-14MB1HKZY61SQ",
-        "S3Bucket": "lakehouse-pipeline-exportbucket-eyb1ppni8ypo",
+        "TableArn": "${TableArn}",
+        "S3Bucket": "${ExportBucket}",
         "S3Prefix.$": "States.Format('usuarios_cnpj/{}', $.run_date)",
         "ExportFormat": "DYNAMODB_JSON",
         "ExportType": "FULL_EXPORT"
@@ -75,7 +75,7 @@
       "Type": "Task",
       "Resource": "arn:aws:states:::glue:startJobRun.sync",
       "Parameters": {
-        "JobName": "EtlJob-sbGA2AcilabW",
+        "JobName": "${GlueJobName}",
         "Arguments": { "--STAGE": "landing", "--RUN_DATE.$": "$.run_date", "--EXPORT_ARN.$": "$.export.arn" }
       },
       "ResultPath": null,
@@ -88,7 +88,7 @@
       "Type": "Task",
       "Resource": "arn:aws:states:::glue:startJobRun.sync",
       "Parameters": {
-        "JobName": "EtlJob-sbGA2AcilabW",
+        "JobName": "${GlueJobName}",
         "Arguments": { "--STAGE": "bronze", "--RUN_DATE.$": "$.run_date" }
       },
       "ResultPath": null,
@@ -101,7 +101,7 @@
       "Type": "Task",
       "Resource": "arn:aws:states:::glue:startJobRun.sync",
       "Parameters": {
-        "JobName": "EtlJob-sbGA2AcilabW",
+        "JobName": "${GlueJobName}",
         "Arguments": { "--STAGE": "silver", "--RUN_DATE.$": "$.run_date" }
       },
       "ResultPath": null,
@@ -114,7 +114,7 @@
       "Type": "Task",
       "Resource": "arn:aws:states:::glue:startJobRun.sync",
       "Parameters": {
-        "JobName": "EtlJob-sbGA2AcilabW",
+        "JobName": "${GlueJobName}",
         "Arguments": { "--STAGE": "gold", "--RUN_DATE.$": "$.run_date" }
       },
       "ResultPath": null,
@@ -127,7 +127,7 @@
       "Type": "Task",
       "Resource": "arn:aws:states:::glue:startJobRun.sync",
       "Parameters": {
-        "JobName": "EtlJob-sbGA2AcilabW",
+        "JobName": "${GlueJobName}",
         "Arguments": { "--STAGE": "kb_docs", "--RUN_DATE.$": "$.run_date" }
       },
       "ResultPath": null,
@@ -154,7 +154,7 @@
       "Type": "Task",
       "Resource": "arn:aws:states:::sns:publish",
       "Parameters": {
-        "TopicArn": "arn:aws:sns:us-east-1:520499255485:lakehouse-pipeline-AlertTopic-2aTErIm9Volj",
+        "TopicArn": "${AlertTopicArn}",
         "Subject": "Pipeline usuarios-cnpj falhou",
         "Message.$": "States.Format('Execução {} falhou: {}', $$.Execution.Id, States.JsonToString($.erro))"
       },
