@@ -118,6 +118,25 @@ await fetch(`${API_URL}/me`, { method: "PATCH", headers: auth, body: JSON.string
 
 O e-mail padrão do Cognito tem limite baixo de envios por dia. Antes de produção, configure o Amazon SES no User Pool.
 
+## api/matriz
+
+API da **matriz de obrigações** (stack `matriz-api`): lê obrigações e tarefas da gold do lakehouse pelo Athena e registra as decisões do dono. Usa o mesmo login (Cognito) e a tabela do cadastro, só para leitura: o CNPJ e o papel vêm de lá, nunca do front.
+
+| Rota | Body | Resposta |
+|---|---|---|
+| `GET /obrigacoes` | | versão vigente de cada obrigação e propostas do LLM aguardando decisão |
+| `GET /obrigacoes/{id}` | | todas as versões e o histórico (inclusões, alterações, aprovações) |
+| `POST /obrigacoes/{id}/decisao` | `{"versao": 2, "decisao": "aprovar"}` | **200** com as versões e as tarefas recalculadas. **409** se a versão já foi decidida. Só o dono (**403**) |
+| `GET /tarefas` | `?em_risco=true&obrigacao_id=OBR-013` | tarefas com vencimento, área, status e `em_risco` |
+| `PATCH /tarefas/{id}` | `{"status": "concluida", "evidencia_url": "https://..."}` | **200** com a tarefa. Só o dono (**403**) |
+
+A decisão é gravada em `bronze_db.matriz_decisoes` (de onde o job refaz a gold) e já aplicada na gold, para o front ver o resultado na hora. As regras de prazo e de versão são as mesmas do job (`pipeline/matriz/src/regras_matriz.py`, copiado em `api/matriz/src/`). Os dados vêm do ETL em `pipeline/matriz/`.
+
+```bash
+make matriz-test     # testes (o SQL roda num DuckDB no lugar do Athena)
+make matriz-deploy   # sam deploy; resolve User Pool, tabela, bucket e workgroup pelos outputs das stacks
+```
+
 ## front/cadastro-teste
 
 Front de **teste** do fluxo completo: login no Cognito, envio do CNPJ, espera pela consulta, formulário pré-preenchido com os dados da Receita e organização (convidar, aceitar convite, remover membros). Foi feito com Vite, React, TypeScript e Amplify, a mesma base do Lovable. O arquivo `src/api.ts` é o cliente da API que serve de referência para o front definitivo.
@@ -127,6 +146,8 @@ make front-env     # gera front/cadastro-teste/.env com os outputs da stack (pre
 make front-dev     # http://localhost:5173 (porta fixa: é a que está liberada no CORS)
 make front-check   # typecheck
 ```
+
+Com `VITE_MATRIZ_API_URL` no `.env` (o `make front-env` preenche se a stack `matriz-api` existir) aparece a tela da matriz: propostas para aprovar ou rejeitar, tarefas com status e as obrigações vigentes com o histórico. O cliente está em `src/matriz.ts`.
 
 Os campos do perfil ficam em `src/campos.ts`, espelhando `src/perfil.py` da API: texto, opções, listas como chips (UFs, órgãos, temas) e linhas repetíveis (unidades, outorgas, áreas).
 
