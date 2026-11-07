@@ -3,13 +3,21 @@
 
 LAMBDAS := cnpj-cadastro
 
-.PHONY: install test clean build deploy
+.PHONY: install test smoke smoke-login clean build deploy
 
 install:
 	uv sync
 
 test: install
 	uv run pytest
+
+# Testes contra a stack ja publicada na AWS (usam suas credenciais; criam e apagam usuarios de teste).
+# Opcoes: make smoke ARGS="--stack outra --cnpj 00000000000191"
+smoke-login: install
+	uv run python cnpj-cadastro/tests/smoke_login.py $(ARGS)
+
+smoke: install
+	uv run python cnpj-cadastro/tests/smoke_test.py $(ARGS)
 
 clean:
 	rm -rf .venv .pytest_cache

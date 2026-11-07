@@ -14,3 +14,4 @@ dev = [
 
 [tool.pytest.ini_options]
 testpaths = ["*/tests"]
+python_files = ["test_*.py"]  # smoke_*.py rodam contra a AWS, só via make
