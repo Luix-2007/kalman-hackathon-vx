@@ -40,7 +40,7 @@ const daqui = (dias: number) => Math.floor(Date.now() / 1000) + dias * 86400;
 
 let atual: Cadastro | null =
   modo === "dados" ? structuredClone(EXEMPLO)
-  : modo === "membro" ? { ...structuredClone(EXEMPLO), user_id: "demo-membro", papel: "membro", dados: { conferido_em: "2026-11-07T21:40:00+00:00", conferido_por: "regulacao@empresa-exemplo.com.br", ufs_atuacao: "RJ" } }
+  : modo === "membro" ? { ...structuredClone(EXEMPLO), user_id: "demo-membro", papel: "membro", dados: { conferido_em: "2026-11-07T21:40:00+00:00", conferido_por: "regulacao@empresa-exemplo.com.br", conferido_por_nome: "Ana Ribeiro", ufs_atuacao: ["RJ"] } }
   : null;
 
 let equipe: Membros = {
@@ -71,7 +71,7 @@ export const demoApi = {
     atual = { ...structuredClone(EXEMPLO), dados: atual?.dados ?? {}, consultado_em: new Date().toISOString() };
     return structuredClone(atual);
   },
-  async salvarDados(dados: Record<string, string | number | boolean | null>): Promise<Cadastro> {
+  async salvarDados(dados: Record<string, unknown>): Promise<Cadastro> {
     await espera(500);
     if (!atual) throw new Error("cadastro não encontrado");
     for (const [k, v] of Object.entries(dados)) {

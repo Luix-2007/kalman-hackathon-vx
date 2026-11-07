@@ -14,7 +14,10 @@ Respostas:
        tem membros/convites e por isso não pode trocar de CNPJ
   400  CNPJ ou JSON inválido
 Reenviar o mesmo CNPJ só refaz a consulta. O dono pode trocar de CNPJ enquanto a
-organização não tiver membros nem convites pendentes: o CNPJ anterior fica livre.
+organização não tiver membros, convites pendentes nem perfil regulatório com unidades,
+outorgas ou áreas: o CNPJ anterior fica livre. O perfil é copiado para o lake da matriz
+chaveado pelo CNPJ, e as obrigações e tarefas são derivadas dele; trocar o CNPJ depois
+disso deixaria a matriz presa ao CNPJ antigo.
 """
 
 import json
@@ -24,6 +27,7 @@ import boto3
 
 import auth
 import dados
+import perfil
 from app import normalize_cnpj
 from dados import ErroApi, TransacaoCancelada, org_key, resp
 
@@ -64,6 +68,9 @@ def vincular(user_id: str, cnpj: str) -> None:
         org = dados.get(org_key(atual)) or {}
         if org.get("membros") or dados.convites_ativos(org):
             raise ErroApi(409, "remova os membros e cancele os convites antes de trocar o CNPJ")
+        if perfil.tem_perfil_no_lake(org.get("dados")):
+            raise ErroApi(409, "a organização já tem perfil regulatório (unidades, outorgas ou "
+                               "áreas) e matriz de obrigações ligados a este CNPJ; não é possível trocá-lo")
         ops = [
             _nova_org(cnpj, user_id, org.get("dono_email"), org.get("dados") or {}),
             {"Update": {"Key": {"user_id": user_id}, "UpdateExpression": "SET cnpj = :novo",

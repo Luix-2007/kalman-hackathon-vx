@@ -1,0 +1,203 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Lakehouse dos atos do DOU. Coleta o ZIP mensal direto da Imprensa Nacional e
+  grava Landing em Parquet e Bronze/Prata/Ouro em Iceberg, no mesmo lake do
+  stack lakehouse-pipeline. Job Glue e maquina de estados proprios.
+
+Parameters:
+  LakeBucketName:
+    Type: String
+    Description: >
+      Bucket do lake, criado pelo stack lakehouse-pipeline (output LakeBucketName).
+      O Makefile resolve isto automaticamente.
+  ArtifactsBucket:
+    Type: String
+    Default: ""
+    Description: >
+      Bucket onde o sam deploy coloca o etl_dou.py, para o job poder baixar o script.
+      Vazio = assume o bucket padrao do SAM (aws-sam-cli-managed-default-samclisourcebucket-*).
+  Secao:
+    Type: String
+    Default: "1"
+    AllowedValues: ["1", "2", "3"]
+    Description: Secao do DOU a coletar
+  AlertEmail:
+    Type: String
+    Default: ""
+    Description: E-mail que recebe aviso de falha (vazio = so o topico SNS)
+  Schedule:
+    Type: String
+    Default: cron(0 5 * * ? *)
+    Description: Quando rodar, no fuso America/Sao_Paulo (padrao 05:00)
+
+Conditions:
+  HasAlertEmail: !Not [!Equals [!Ref AlertEmail, ""]]
+  HasArtifactsBucket: !Not [!Equals [!Ref ArtifactsBucket, ""]]
+
+Resources:
+  # ------------------------------------------------------------ catalogo
+  # Os databases landing_db/bronze_db/silver_db/gold_db vem do stack
+  # lakehouse-pipeline. Aqui so entra a tabela da Landing, que e Parquet e
+  # precisa de partition projection para o Athena achar as particoes sem crawler.
+  # Bronze, Prata e Ouro sao Iceberg e o PyIceberg as cria no primeiro job.
+  LandingDouTable:
+    Type: AWS::Glue::Table
+    Properties:
+      CatalogId: !Ref AWS::AccountId
+      DatabaseName: landing_db
+      TableInput:
+        Name: dou_xml
+        TableType: EXTERNAL_TABLE
+        Parameters:
+          classification: parquet
+          projection.enabled: "true"
+          projection.ano_mes.type: date
+          projection.ano_mes.format: yyyy-MM
+          projection.ano_mes.range: 2026-01,NOW
+          projection.ano_mes.interval: "1"
+          projection.ano_mes.interval.unit: MONTHS
+          projection.secao.type: integer
+          projection.secao.range: "1,3"
+          storage.location.template: !Sub "s3://${LakeBucketName}/landing/dou_xml/ano_mes=${!ano_mes}/secao=${!secao}"
+        PartitionKeys:
+          - { Name: ano_mes, Type: string }
+          - { Name: secao, Type: int }
+        StorageDescriptor:
+          Location: !Sub "s3://${LakeBucketName}/landing/dou_xml/"
+          InputFormat: org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat
+          OutputFormat: org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat
+          SerdeInfo: { SerializationLibrary: org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe }
+          Columns:
+            - { Name: hash_xml, Type: string, Comment: sha256 do XML }
+            - { Name: arquivo, Type: string, Comment: caminho do XML dentro do ZIP }
+            - { Name: xml, Type: binary, Comment: XML cru da Imprensa Nacional }
+            - { Name: coletado_em, Type: timestamp }
+
+  # ------------------------------------------------------------ job Glue (DuckDB)
+  EtlDouJobRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: glue.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole
+      Policies:
+        - PolicyName: lakehouse-dou
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: LerEGravarLake
+                Effect: Allow
+                Action: [s3:GetObject, s3:PutObject, s3:DeleteObject, s3:ListBucket, s3:GetBucketLocation]
+                Resource:
+                  - !Sub "arn:${AWS::Partition}:s3:::${LakeBucketName}"
+                  - !Sub "arn:${AWS::Partition}:s3:::${LakeBucketName}/*"
+              # O etl_dou.py fica no bucket de artefatos do sam deploy. A policy
+              # AWSGlueServiceRole so cobre buckets aws-glue-*, entao sem isto o job
+              # nao baixa o script (403 no HeadObject) e nem chega a rodar.
+              - Sid: LerScriptDoJob
+                Effect: Allow
+                Action: [s3:GetObject, s3:ListBucket]
+                Resource: !If
+                  - HasArtifactsBucket
+                  - [!Sub "arn:${AWS::Partition}:s3:::${ArtifactsBucket}",
+                     !Sub "arn:${AWS::Partition}:s3:::${ArtifactsBucket}/*"]
+                  - [!Sub "arn:${AWS::Partition}:s3:::aws-sam-cli-managed-default-samclisourcebucket-*",
+                     !Sub "arn:${AWS::Partition}:s3:::aws-sam-cli-managed-default-samclisourcebucket-*/*"]
+              - Sid: CatalogoIceberg
+                Effect: Allow
+                Action:
+                  - glue:GetDatabase
+                  - glue:GetDatabases
+                  - glue:GetTable
+                  - glue:GetTables
+                  - glue:CreateTable
+                  - glue:UpdateTable
+                Resource:
+                  - !Sub "arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:catalog"
+                  - !Sub "arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:database/*"
+                  - !Sub "arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:table/bronze_db/*"
+                  - !Sub "arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:table/silver_db/*"
+                  - !Sub "arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:table/gold_db/*"
+
+  EtlDouJob:
+    Type: AWS::Glue::Job
+    Properties:
+      Description: Lakehouse dos atos do DOU com DuckDB (etapa escolhida por --STAGE)
+      Role: !GetAtt EtlDouJobRole.Arn
+      # Python Shell com Python 3.9 exige GlueVersion 3.0. Sem isto o Glue assume
+      # a 1.0 (Python 3.6) e o --additional-python-modules nao funciona.
+      GlueVersion: "3.0"
+      Command:
+        Name: pythonshell
+        PythonVersion: "3.9"
+        ScriptLocation: src/etl_dou.py   # o sam deploy envia para o S3
+      MaxCapacity: 1
+      MaxRetries: 0
+      # A coleta baixa um ZIP de centenas de MB e le milhares de XML: tempo folgado.
+      Timeout: 120
+      ExecutionProperty: { MaxConcurrentRuns: 1 }
+      DefaultArguments:
+        "--LAKE_URI": !Sub "s3://${LakeBucketName}"
+        "--REGION": !Ref AWS::Region
+        "--SECAO": !Ref Secao
+        # O Glue separa esta lista por virgula, entao um extra com virgula dentro
+        # ("pyiceberg[glue,pyarrow]") seria partido ao meio e o pip falharia.
+        "--additional-python-modules": "duckdb==1.2.2,pyiceberg[glue]==0.9.1,pyiceberg[pyarrow]==0.9.1"
+
+  # ------------------------------------------------------------ orquestracao
+  AlertTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      DisplayName: Pipeline atos do DOU
+
+  AlertEmailSubscription:
+    Type: AWS::SNS::Subscription
+    Condition: HasAlertEmail
+    Properties:
+      TopicArn: !Ref AlertTopic
+      Protocol: email
+      Endpoint: !Ref AlertEmail
+
+  DouStateMachine:
+    Type: AWS::Serverless::StateMachine
+    Properties:
+      Type: STANDARD
+      DefinitionUri: statemachine/pipeline.asl.json
+      DefinitionSubstitutions:
+        GlueJobName: !Ref EtlDouJob
+        AlertTopicArn: !Ref AlertTopic
+        Secao: !Ref Secao
+      Policies:
+        - Statement:
+            - Sid: RodarJobGlue
+              Effect: Allow
+              Action: [glue:StartJobRun, glue:GetJobRun, glue:GetJobRuns, glue:BatchStopJobRun]
+              Resource: !Sub "arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:job/${EtlDouJob}"
+            - Sid: Avisar
+              Effect: Allow
+              Action: sns:Publish
+              Resource: !Ref AlertTopic
+      Events:
+        TodoDia:
+          Type: ScheduleV2
+          Properties:
+            ScheduleExpression: !Ref Schedule
+            ScheduleExpressionTimezone: America/Sao_Paulo
+            Input: "{}"
+
+Outputs:
+  GlueJobName:
+    Value: !Ref EtlDouJob
+  StateMachineArn:
+    Value: !Ref DouStateMachine
+  AlertTopicArn:
+    Value: !Ref AlertTopic
+  TabelasDoLake:
+    Description: Onde os atos ficam no catalogo
+    Value: "landing_db.dou_xml (Parquet) | bronze_db.dou_xml, silver_db.dou_atos, gold_db.dou_resumo_mensal (Iceberg)"

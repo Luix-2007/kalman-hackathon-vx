@@ -84,13 +84,13 @@ def test_reenvio_do_mesmo_cnpj_refaz_a_consulta(cadastro, tabela):
 def test_troca_de_cnpj_sem_membros_libera_o_anterior(cadastro, tabela):
     assert call(cadastro, {"cnpj": "00000000000191"}, sub="u1")[0] == 202
     tabela.update_item(Key={"user_id": "CNPJ#00000000000191"}, UpdateExpression="SET empresa = :e, dados = :d",
-                       ExpressionAttributeValues={":e": {"razao_social": "X"}, ":d": {"telefone": "1199"}})
+                       ExpressionAttributeValues={":e": {"razao_social": "X"}, ":d": {"setor": "energia"}})
     assert call(cadastro, {"cnpj": "33000167000101"}, sub="u1")[0] == 202
     assert item(tabela, "u1")["cnpj"] == "33000167000101"
     assert item(tabela, "CNPJ#00000000000191") is None
     org = item(tabela, "CNPJ#33000167000101")
     assert org["dono"] == "u1" and org["status"] == "processando"
-    assert "empresa" not in org and org["dados"] == {"telefone": "1199"}  # o formulário vai junto
+    assert "empresa" not in org and org["dados"] == {"setor": "energia"}  # o formulário vai junto
     # o CNPJ liberado pode ser usado por outra pessoa; o novo, não
     assert call(cadastro, {"cnpj": "00000000000191"}, sub="u2")[0] == 202
     assert call(cadastro, {"cnpj": "33000167000101"}, sub="u2")[0] == 409
@@ -123,3 +123,21 @@ def test_falha_no_eventbridge_mantem_vinculo_e_reenvio_funciona(cadastro, monkey
     monkeypatch.setattr(cadastro, "_events", FakeEvents())
     assert call(cadastro, {"cnpj": "00000000000191"})[0] == 202
     assert len(cadastro._events.entries) == 1
+
+
+@pytest.mark.parametrize("lista", ["unidades", "outorgas", "areas"])
+def test_troca_com_perfil_regulatorio_409(cadastro, tabela, lista):
+    assert call(cadastro, {"cnpj": "00000000000191"}, sub="u1")[0] == 202
+    tabela.update_item(Key={"user_id": "CNPJ#00000000000191"}, UpdateExpression="SET dados = :d",
+                       ExpressionAttributeValues={":d": {"setor": "energia", lista: [{"id": "X"}]}})
+    code, body = call(cadastro, {"cnpj": "33000167000101"}, sub="u1")
+    assert code == 409 and "perfil regulatório" in body["erro"]
+    assert item(tabela, "u1")["cnpj"] == "00000000000191"
+    assert item(tabela, "CNPJ#33000167000101") is None
+
+
+def test_troca_com_listas_vazias_e_permitida(cadastro, tabela):
+    assert call(cadastro, {"cnpj": "00000000000191"}, sub="u1")[0] == 202
+    tabela.update_item(Key={"user_id": "CNPJ#00000000000191"}, UpdateExpression="SET dados = :d",
+                       ExpressionAttributeValues={":d": {"unidades": [], "setor": "energia"}})
+    assert call(cadastro, {"cnpj": "33000167000101"}, sub="u1")[0] == 202

@@ -42,7 +42,7 @@ export type Cadastro = {
   status: Status;
   consultado_em: string | null;
   empresa: Empresa;
-  dados: Record<string, string | number | boolean>;
+  dados: Record<string, unknown>; // perfil regulatório (ver campos.ts)
 };
 
 export type Membros = {
@@ -69,7 +69,8 @@ export function onRequestLog(fn: (entry: LogEntry) => void) {
   logListener = fn;
 }
 
-async function request(method: string, path: string, body?: unknown): Promise<{ status: number; data: unknown }> {
+/** Chamada autenticada. `base` = URL da API (cadastro por padrão; a matriz usa a dela). */
+export async function request(method: string, path: string, body?: unknown, base = config.apiUrl): Promise<{ status: number; data: unknown }> {
   // fetchAuthSession renova o access token sozinho quando ele expira (refresh token)
   const token = (await fetchAuthSession()).tokens?.accessToken?.toString();
   if (!token) throw new ApiError(401, { erro: "sessão expirada, entre de novo" });
@@ -77,7 +78,7 @@ async function request(method: string, path: string, body?: unknown): Promise<{ 
   const started = performance.now();
   let status: number | "falhou" = "falhou";
   try {
-    const resp = await fetch(config.apiUrl + path, {
+    const resp = await fetch(base + path, {
       method,
       headers: {
         Authorization: `Bearer ${token}`,
@@ -121,7 +122,7 @@ export async function enviarCnpj(cnpj: string): Promise<void> {
 }
 
 /** PATCH /cadastro/me. Só o dono (membro recebe 403). Merge campo a campo; null apaga o campo. */
-export async function salvarDados(dados: Record<string, string | number | boolean | null>): Promise<Cadastro> {
+export async function salvarDados(dados: Record<string, unknown>): Promise<Cadastro> {
   const { status, data } = await request("PATCH", "/me", { dados });
   if (status !== 200) throw new ApiError(status, data);
   return data as Cadastro;

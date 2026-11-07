@@ -6,8 +6,13 @@ requires-python = ">=3.13"
 dependencies = []
 
 [dependency-groups]
+chatbot = [
+    "bedrock-agentcore>=1.25.4",
+    "strands-agents>=1.64.0",
+]
 dev = [
     "boto3",
+    "duckdb",          # faz o papel do Athena nos testes da api/matriz
     "moto[dynamodb]",
     "pytest",
 ]

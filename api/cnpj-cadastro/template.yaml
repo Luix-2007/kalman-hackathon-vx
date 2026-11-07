@@ -13,6 +13,13 @@ Parameters:
     Type: CommaDelimitedList
     Default: "http://localhost:3000,http://localhost:5173"
     Description: Endereços do seu front (CORS). Adicione o domínio de produção.
+  FixturesEnabled:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
+    Description: >-
+      true = CNPJs "KALMAN..." vêm de src/fixtures/ (empresa de teste) em vez do OpenCNPJ.
+      Ligue só na stack de demonstração.
 
 Resources:
   # ---------- Autenticação ----------
@@ -229,7 +236,7 @@ Resources:
           Type: HttpApi
           Properties: { ApiId: !Ref CadastroApi, Method: DELETE, Path: /cadastro/convite }
 
-  # Evento UsuarioCadastrado -> consulta o OpenCNPJ -> grava no DynamoDB
+  # Evento UsuarioCadastrado -> consulta o OpenCNPJ (ou a fixture, ver src/fontes_cnpj.py) -> grava no DynamoDB
   CnpjLookupFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -242,6 +249,7 @@ Resources:
       Environment:
         Variables:
           TABLE_NAME: !Ref UsuariosCnpjTable
+          FIXTURES_ENABLED: !Ref FixturesEnabled
       EventInvokeConfig:
         MaximumRetryAttempts: 2
         DestinationConfig:

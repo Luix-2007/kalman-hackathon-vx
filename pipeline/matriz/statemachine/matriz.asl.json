@@ -1,0 +1,88 @@
+{
+  "Comment": "Matriz de obrigações: perfis do DynamoDB -> Bronze -> Silver -> Gold",
+  "StartAt": "TemDataInformada",
+  "TimeoutSeconds": 7200,
+  "States": {
+    "TemDataInformada": {
+      "Type": "Choice",
+      "Comment": "{\"hoje\": \"AAAA-MM-DD\"} recalcula como se fosse outro dia; sem isso, o job usa hoje em Brasília",
+      "Choices": [{ "Variable": "$.hoje", "IsPresent": true, "Next": "UsarDataInformada" }],
+      "Default": "UsarDataDeHoje"
+    },
+    "UsarDataInformada": {
+      "Type": "Pass",
+      "Parameters": { "hoje.$": "$.hoje" },
+      "Next": "Perfis"
+    },
+    "UsarDataDeHoje": {
+      "Type": "Pass",
+      "Parameters": { "hoje": "hoje" },
+      "Next": "Perfis"
+    },
+    "Perfis": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::glue:startJobRun.sync",
+      "Parameters": {
+        "JobName": "${GlueJobName}",
+        "Arguments": { "--STAGE": "perfis", "--HOJE.$": "$.hoje" }
+      },
+      "ResultPath": null,
+      "Retry": [{ "ErrorEquals": ["Glue.ConcurrentRunsExceededException", "Glue.AWSGlueException"],
+                  "IntervalSeconds": 30, "MaxAttempts": 6, "BackoffRate": 1.5 }],
+      "Catch": [{ "ErrorEquals": ["States.ALL"], "ResultPath": "$.erro", "Next": "AvisarFalha" }],
+      "Next": "Bronze"
+    },
+    "Bronze": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::glue:startJobRun.sync",
+      "Parameters": {
+        "JobName": "${GlueJobName}",
+        "Arguments": { "--STAGE": "bronze", "--HOJE.$": "$.hoje" }
+      },
+      "ResultPath": null,
+      "Retry": [{ "ErrorEquals": ["Glue.ConcurrentRunsExceededException", "Glue.AWSGlueException"],
+                  "IntervalSeconds": 30, "MaxAttempts": 6, "BackoffRate": 1.5 }],
+      "Catch": [{ "ErrorEquals": ["States.ALL"], "ResultPath": "$.erro", "Next": "AvisarFalha" }],
+      "Next": "Silver"
+    },
+    "Silver": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::glue:startJobRun.sync",
+      "Parameters": {
+        "JobName": "${GlueJobName}",
+        "Arguments": { "--STAGE": "silver", "--HOJE.$": "$.hoje" }
+      },
+      "ResultPath": null,
+      "Retry": [{ "ErrorEquals": ["Glue.ConcurrentRunsExceededException", "Glue.AWSGlueException"],
+                  "IntervalSeconds": 30, "MaxAttempts": 6, "BackoffRate": 1.5 }],
+      "Catch": [{ "ErrorEquals": ["States.ALL"], "ResultPath": "$.erro", "Next": "AvisarFalha" }],
+      "Next": "Gold"
+    },
+    "Gold": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::glue:startJobRun.sync",
+      "Parameters": {
+        "JobName": "${GlueJobName}",
+        "Arguments": { "--STAGE": "gold", "--HOJE.$": "$.hoje" }
+      },
+      "ResultPath": null,
+      "Retry": [{ "ErrorEquals": ["Glue.ConcurrentRunsExceededException", "Glue.AWSGlueException"],
+                  "IntervalSeconds": 30, "MaxAttempts": 6, "BackoffRate": 1.5 }],
+      "Catch": [{ "ErrorEquals": ["States.ALL"], "ResultPath": "$.erro", "Next": "AvisarFalha" }],
+      "Next": "Sucesso"
+    },
+    "Sucesso": { "Type": "Succeed" },
+    "AvisarFalha": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::sns:publish",
+      "Parameters": {
+        "TopicArn": "${AlertTopicArn}",
+        "Subject": "Pipeline da matriz de obrigações falhou",
+        "Message.$": "States.Format('Execução {} falhou: {}', $$.Execution.Id, States.JsonToString($.erro))"
+      },
+      "ResultPath": null,
+      "Next": "Falhou"
+    },
+    "Falhou": { "Type": "Fail", "Error": "PipelineFalhou", "Cause": "Veja o estado AvisarFalha e os logs do job Glue" }
+  }
+}

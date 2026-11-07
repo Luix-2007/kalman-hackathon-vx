@@ -1,0 +1,172 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Lakehouse da matriz de obrigações. Perfis do DynamoDB, matriz importada e propostas do
+  LLM entram pela landing e viram obrigações (com versões) e tarefas na gold, em Iceberg,
+  no mesmo lake do stack lakehouse-pipeline. Job Glue e máquina de estados próprios.
+
+Parameters:
+  LakeBucketName:
+    Type: String
+    Description: Bucket do lake (output LakeBucketName do stack lakehouse-pipeline). O Makefile resolve.
+  CadastroTableName:
+    Type: String
+    Description: Tabela DynamoDB do api/cnpj-cadastro (output TableName). O Makefile resolve.
+  ArtifactsBucket:
+    Type: String
+    Default: ""
+    Description: >
+      Bucket onde o sam deploy coloca o etl_matriz.py. Vazio = bucket padrão do SAM
+      (aws-sam-cli-managed-default-samclisourcebucket-*).
+  AlertEmail:
+    Type: String
+    Default: ""
+    Description: E-mail que recebe aviso de falha (vazio = só o tópico SNS)
+  Schedule:
+    Type: String
+    Default: rate(1 hour)
+    Description: Frequência da execução automática
+
+Conditions:
+  HasAlertEmail: !Not [!Equals [!Ref AlertEmail, ""]]
+  HasArtifactsBucket: !Not [!Equals [!Ref ArtifactsBucket, ""]]
+
+Resources:
+  # As tabelas são Iceberg e o PyIceberg as cria no primeiro job, nos databases do stack
+  # lakehouse-pipeline, sempre com o prefixo matriz_ (bronze_db.matriz_*, silver_db.matriz_*,
+  # gold_db.matriz_*). A landing são arquivos soltos em s3://<lake>/landing/matriz/.
+  EtlMatrizJobRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: glue.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole
+      Policies:
+        - PolicyName: lakehouse-matriz
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: ListarLake
+                Effect: Allow
+                Action: [s3:ListBucket, s3:GetBucketLocation]
+                Resource: !Sub arn:${AWS::Partition}:s3:::${LakeBucketName}
+              - Sid: LerEGravarSoAMatriz
+                Effect: Allow
+                Action: [s3:GetObject, s3:PutObject, s3:DeleteObject]
+                Resource:
+                  - !Sub arn:${AWS::Partition}:s3:::${LakeBucketName}/landing/matriz/*
+                  - !Sub arn:${AWS::Partition}:s3:::${LakeBucketName}/bronze/matriz_*
+                  - !Sub arn:${AWS::Partition}:s3:::${LakeBucketName}/silver/matriz_*
+                  - !Sub arn:${AWS::Partition}:s3:::${LakeBucketName}/gold/matriz_*
+              - Sid: LerRegrasCompartilhadas
+                Effect: Allow
+                Action: s3:GetObject
+                Resource: !Sub arn:${AWS::Partition}:s3:::${LakeBucketName}/artefatos/matriz/*
+              # O etl_matriz.py fica no bucket de artefatos do sam deploy; a AWSGlueServiceRole
+              # só cobre aws-glue-* (pipeline/README.md, armadilha 3).
+              - Sid: LerScriptDoJob
+                Effect: Allow
+                Action: [s3:GetObject, s3:ListBucket]
+                Resource: !If
+                  - HasArtifactsBucket
+                  - - !Sub arn:${AWS::Partition}:s3:::${ArtifactsBucket}
+                    - !Sub arn:${AWS::Partition}:s3:::${ArtifactsBucket}/*
+                  - - !Sub arn:${AWS::Partition}:s3:::aws-sam-cli-managed-default-samclisourcebucket-*
+                    - !Sub arn:${AWS::Partition}:s3:::aws-sam-cli-managed-default-samclisourcebucket-*/*
+              - Sid: CatalogoIcebergSoAMatriz
+                Effect: Allow
+                Action: [glue:GetDatabase, glue:GetDatabases, glue:GetTable, glue:GetTables,
+                         glue:CreateTable, glue:UpdateTable]
+                Resource:
+                  - !Sub arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:catalog
+                  - !Sub arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:database/*
+                  - !Sub arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:table/bronze_db/matriz_*
+                  - !Sub arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:table/silver_db/matriz_*
+                  - !Sub arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:table/gold_db/matriz_*
+              - Sid: LerOrganizacoesDoCadastro
+                Effect: Allow
+                Action: dynamodb:Scan
+                Resource: !Sub arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${CadastroTableName}
+
+  EtlMatrizJob:
+    Type: AWS::Glue::Job
+    Properties:
+      Description: Lakehouse da matriz de obrigações com DuckDB e PyIceberg (etapa escolhida por --STAGE)
+      Role: !GetAtt EtlMatrizJobRole.Arn
+      GlueVersion: "3.0"            # obrigatório para Python 3.9 (pipeline/README.md, armadilha 1)
+      Command:
+        Name: pythonshell
+        PythonVersion: "3.9"
+        ScriptLocation: src/etl_matriz.py   # o sam deploy envia para o S3
+      MaxCapacity: 1
+      MaxRetries: 0
+      Timeout: 30
+      ExecutionProperty:
+        MaxConcurrentRuns: 1
+      DefaultArguments:
+        --LAKE_URI: !Sub s3://${LakeBucketName}
+        --REGION: !Ref AWS::Region
+        --TABLE_NAME: !Ref CadastroTableName
+        # regras_matriz.py é o mesmo arquivo da API; o Makefile envia antes do deploy
+        --extra-py-files: !Sub s3://${LakeBucketName}/artefatos/matriz/regras_matriz.py
+        # um spec por extra (armadilha 2)
+        --additional-python-modules: duckdb==1.2.2,pyiceberg[glue]==0.9.1,pyiceberg[pyarrow]==0.9.1
+
+  AlertTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      DisplayName: Pipeline matriz de obrigações
+
+  AlertEmailSubscription:
+    Type: AWS::SNS::Subscription
+    Condition: HasAlertEmail
+    Properties:
+      TopicArn: !Ref AlertTopic
+      Protocol: email
+      Endpoint: !Ref AlertEmail
+
+  MatrizStateMachine:
+    Type: AWS::Serverless::StateMachine
+    Properties:
+      Type: STANDARD
+      DefinitionUri: statemachine/matriz.asl.json
+      DefinitionSubstitutions:
+        GlueJobName: !Ref EtlMatrizJob
+        AlertTopicArn: !Ref AlertTopic
+      Policies:
+        - Statement:
+            - Sid: RodarJobGlue
+              Effect: Allow
+              Action: [glue:StartJobRun, glue:GetJobRun, glue:GetJobRuns, glue:BatchStopJobRun]
+              Resource: !Sub arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:job/${EtlMatrizJob}
+            - Sid: Avisar
+              Effect: Allow
+              Action: sns:Publish
+              Resource: !Ref AlertTopic
+      Events:
+        Agendado:
+          Type: ScheduleV2
+          Properties:
+            ScheduleExpression: !Ref Schedule
+            Input: "{}"
+
+Outputs:
+  StateMachineArn:
+    Value: !Ref MatrizStateMachine
+    Export:
+      Name: !Sub ${AWS::StackName}-StateMachineArn
+  GlueJobName:
+    Value: !Ref EtlMatrizJob
+  AlertTopicArn:
+    Value: !Ref AlertTopic
+  LandingUri:
+    Description: Onde entram a matriz do cliente (importada/<cnpj>/) e as propostas do DOU (propostas_llm/<data>/)
+    Value: !Sub s3://${LakeBucketName}/landing/matriz/
+  TabelasDoLake:
+    Description: Onde a matriz fica no catálogo
+    Value: bronze_db.matriz_* | silver_db.matriz_* | gold_db.matriz_obrigacoes, matriz_tarefas, matriz_versoes

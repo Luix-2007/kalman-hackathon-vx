@@ -9,8 +9,9 @@ Gatilho: evento no EventBridge publicado pelo seu backend no cadastro:
       "Detail": "{\"user_id\": \"<sub>\", \"cnpj\": \"00000000000191\"}"
     }
 
-A Lambda consulta https://api.opencnpj.org/{cnpj}?datasets=receita e grava
-o resultado no item da organização (user_id = "CNPJ#<cnpj>", ver dados.py).
+A Lambda busca os dados do CNPJ (fontes_cnpj.py: OpenCNPJ ou, na stack de demo,
+a fixture da empresa de teste) e grava o resultado no item da organização
+(user_id = "CNPJ#<cnpj>", ver dados.py).
 
 O POST /cadastro (cadastro.py) já criou a organização. Esta Lambda só grava se o
 usuário do evento ainda é o dono desse CNPJ: um evento atrasado de um CNPJ trocado,
@@ -19,31 +20,24 @@ ou um evento sem organização, é ignorado.
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 import re
-import urllib.error
-import urllib.request
 from datetime import datetime, timezone
-from decimal import Decimal
 
 import boto3
 from botocore.exceptions import ClientError
 
+import fontes_cnpj
 from dados import org_key
+from fontes_cnpj import RetryableError  # noqa: F401  (a Lambda falha e tenta de novo)
 
 log = logging.getLogger()
 log.setLevel(os.environ.get("LOG_LEVEL", "INFO"))
 
 TABLE_NAME = os.environ.get("TABLE_NAME", "usuarios-cnpj")
-API_URL = os.environ.get("OPENCNPJ_API_URL", "https://api.opencnpj.org")
 
 _table = boto3.resource("dynamodb").Table(TABLE_NAME)
-
-
-class RetryableError(Exception):
-    """Erro temporário (429/5xx/rede): a Lambda falha e o EventBridge/Lambda tenta de novo."""
 
 
 def normalize_cnpj(value: str) -> str:
@@ -52,25 +46,6 @@ def normalize_cnpj(value: str) -> str:
     if not re.fullmatch(r"[0-9A-Z]{12}[0-9]{2}", cnpj):
         raise ValueError(f"CNPJ inválido: {value!r}")
     return cnpj
-
-
-def fetch_cnpj(cnpj: str) -> dict | None:
-    """Retorna os dados do CNPJ, ou None se não existir na base."""
-    req = urllib.request.Request(
-        f"{API_URL}/{cnpj}?datasets=receita",
-        headers={"User-Agent": "cadastro-usuarios", "Accept": "application/json"},
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            return json.loads(resp.read(), parse_float=Decimal)
-    except urllib.error.HTTPError as exc:
-        if exc.code == 404:
-            return None
-        if exc.code == 429 or exc.code >= 500:
-            raise RetryableError(f"OpenCNPJ HTTP {exc.code}") from exc
-        raise
-    except (urllib.error.URLError, TimeoutError) as exc:
-        raise RetryableError(str(exc)) from exc
 
 
 def _save(cnpj: str, dono: str, attrs: dict, remove: tuple[str, ...] = ()) -> bool:
@@ -107,7 +82,7 @@ def handler(event: dict, context=None) -> dict:
         log.warning("user %s: evento com CNPJ inválido %r ignorado", user_id, detail.get("cnpj"))
         return {"user_id": user_id, "status": "ignorado"}
 
-    empresa = fetch_cnpj(cnpj)
+    empresa = fontes_cnpj.buscar(cnpj)
     if empresa is None:
         status = "nao_encontrado"
     else:

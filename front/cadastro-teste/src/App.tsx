@@ -627,7 +627,7 @@ function Consultando() {
 // Só o que o Kalman usa para decidir quais normas valem: identificação, atividades (CNAE), onde atua e regime
 // tributário. Tudo vem da Receita e não se edita aqui (se estiver errado, corrige-se na Receita e consulta-se de novo).
 // Contato, endereço completo e sócios ficam de fora. O único dado nosso é "Estados onde atua".
-// Gravado em `dados` (PATCH /cadastro/me): conferido_em, conferido_por, ufs_atuacao ("RJ,SP").
+// Gravado em `dados` (PATCH /cadastro/me): conferido_em, conferido_por, conferido_por_nome, ufs_atuacao (lista: ["RJ", "SP"]).
 
 const UFS = ["AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA", "MT", "MS", "MG", "PA", "PB", "PR", "PE", "PI",
   "RJ", "RN", "RS", "RO", "RR", "SC", "SP", "SE", "TO"];
@@ -656,7 +656,9 @@ function Dados({ cadastro, email, meuNome, onNome, onSalvo, onTrocar, onReconsul
   const conferidoEm = texto(d.conferido_em);
   const sede = texto(e.uf);
   const salvas = useMemo(() => {
-    const lista = texto(d.ufs_atuacao).split(",").map((u) => u.trim()).filter((u) => UFS.includes(u));
+    // a API guarda lista de UFs (perfil.py); o texto "RJ,SP" é do formato antigo desta tela
+    const bruto = d.ufs_atuacao as unknown;
+    const lista = (Array.isArray(bruto) ? bruto.map(String) : texto(bruto).split(",")).map((u) => u.trim()).filter((u) => UFS.includes(u));
     return lista.length ? lista : sede ? [sede] : [];
   }, [d.ufs_atuacao, sede]);
   const [ufs, setUfs] = useState<string[]>(salvas);
@@ -677,7 +679,7 @@ function Dados({ cadastro, email, meuNome, onNome, onSalvo, onTrocar, onReconsul
     try {
       const ordenadas = UFS.filter((u) => ufs.includes(u));
       onSalvo(await api.salvarDados({
-        conferido_em: new Date().toISOString(), conferido_por: email, conferido_por_nome: meuNome || null, ufs_atuacao: ordenadas.join(","),
+        conferido_em: new Date().toISOString(), conferido_por: email, conferido_por_nome: meuNome || null, ufs_atuacao: ordenadas,
       }));
       setMsg({ tipo: "ok", texto: "Dados confirmados." });
     } catch (err) {

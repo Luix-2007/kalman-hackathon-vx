@@ -1,0 +1,126 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  API da matriz de obrigações: lê obrigações e tarefas da gold do lakehouse pelo Athena e
+  registra decisões do dono. Usa o login (Cognito) e a tabela do stack cnpj-cadastro, só leitura.
+
+Parameters:
+  UserPoolId:
+    Type: String
+    Description: Output UserPoolId do stack cnpj-cadastro (o Makefile resolve)
+  UserPoolClientId:
+    Type: String
+    Description: Output UserPoolClientId do stack cnpj-cadastro
+  CadastroTableName:
+    Type: String
+    Description: Output TableName do stack cnpj-cadastro (só leitura, para achar o CNPJ e o papel)
+  LakeBucketName:
+    Type: String
+    Description: Output LakeBucketName do stack lakehouse-pipeline
+  AthenaWorkGroup:
+    Type: String
+    Default: lakehouse-pipeline-lakehouse
+    Description: Output AthenaWorkGroupName do stack lakehouse-pipeline (já tem local de resultados)
+  AllowedOrigins:
+    Type: CommaDelimitedList
+    Default: "http://localhost:3000,http://localhost:5173"
+    Description: Endereços do front (CORS)
+
+Resources:
+  MatrizApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      Auth:
+        DefaultAuthorizer: CognitoAuthorizer
+        Authorizers:
+          CognitoAuthorizer:
+            IdentitySource: $request.header.Authorization
+            JwtConfiguration:
+              issuer: !Sub https://cognito-idp.${AWS::Region}.amazonaws.com/${UserPoolId}
+              audience:
+                - !Ref UserPoolClientId
+      CorsConfiguration:
+        AllowOrigins: !Ref AllowedOrigins
+        AllowMethods: [GET, POST, PATCH, OPTIONS]
+        AllowHeaders: [content-type, authorization]
+      DefaultRouteSettings:
+        ThrottlingBurstLimit: 20
+        ThrottlingRateLimit: 10
+
+  MatrizFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: matriz_api.handler
+      Runtime: python3.13
+      Architectures: [arm64]
+      MemorySize: 512
+      Timeout: 29              # limite de integração do HTTP API é 30 s
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref CadastroTableName
+          ATHENA_WORKGROUP: !Ref AthenaWorkGroup
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref CadastroTableName
+        - Statement:
+            - Sid: AthenaNoWorkgroupDoLake
+              Effect: Allow
+              Action: [athena:StartQueryExecution, athena:StopQueryExecution, athena:GetQueryExecution,
+                       athena:GetQueryResults, athena:GetWorkGroup]
+              Resource: !Sub arn:${AWS::Partition}:athena:${AWS::Region}:${AWS::AccountId}:workgroup/${AthenaWorkGroup}
+            # O Athena usa o catálogo e o S3 com a identidade de quem consulta. Só as tabelas da
+            # matriz: a AcessoLeituraGoldPolicy do lakehouse libera a gold inteira e não serve aqui.
+            - Sid: CatalogoDaMatriz
+              Effect: Allow
+              Action: [glue:GetDatabase, glue:GetDatabases, glue:GetTable, glue:GetTables,
+                       glue:GetPartition, glue:GetPartitions, glue:BatchGetPartition, glue:UpdateTable]
+              Resource:
+                - !Sub arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:catalog
+                - !Sub arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:database/gold_db
+                - !Sub arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:database/bronze_db
+                - !Sub arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:table/gold_db/matriz_*
+                - !Sub arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:table/bronze_db/matriz_decisoes
+            - Sid: ListarLake
+              Effect: Allow
+              Action: [s3:ListBucket, s3:GetBucketLocation]
+              Resource: !Sub arn:${AWS::Partition}:s3:::${LakeBucketName}
+            - Sid: LerGoldDaMatriz
+              Effect: Allow
+              Action: s3:GetObject
+              Resource: !Sub arn:${AWS::Partition}:s3:::${LakeBucketName}/gold/matriz_*
+            - Sid: GravarDecisoesEGold
+              Effect: Allow
+              Action: [s3:GetObject, s3:PutObject, s3:DeleteObject, s3:AbortMultipartUpload]
+              Resource:
+                - !Sub arn:${AWS::Partition}:s3:::${LakeBucketName}/bronze/matriz_decisoes/*
+                - !Sub arn:${AWS::Partition}:s3:::${LakeBucketName}/gold/matriz_obrigacoes/*
+                - !Sub arn:${AWS::Partition}:s3:::${LakeBucketName}/gold/matriz_tarefas/*
+                - !Sub arn:${AWS::Partition}:s3:::${LakeBucketName}/gold/matriz_versoes/*
+            - Sid: ResultadosDoAthena
+              Effect: Allow
+              Action: [s3:GetObject, s3:PutObject, s3:AbortMultipartUpload]
+              Resource: !Sub arn:${AWS::Partition}:s3:::${LakeBucketName}/athena-results/*
+      Events:
+        ListarObrigacoes:
+          Type: HttpApi
+          Properties: { ApiId: !Ref MatrizApi, Method: GET, Path: /obrigacoes }
+        DetalharObrigacao:
+          Type: HttpApi
+          Properties: { ApiId: !Ref MatrizApi, Method: GET, Path: "/obrigacoes/{id}" }
+        Decidir:
+          Type: HttpApi
+          Properties: { ApiId: !Ref MatrizApi, Method: POST, Path: "/obrigacoes/{id}/decisao" }
+        ListarTarefas:
+          Type: HttpApi
+          Properties: { ApiId: !Ref MatrizApi, Method: GET, Path: /tarefas }
+        MudarTarefa:
+          Type: HttpApi
+          Properties: { ApiId: !Ref MatrizApi, Method: PATCH, Path: "/tarefas/{id}" }
+
+Outputs:
+  ApiUrl:
+    Description: "URL base para o front: {ApiUrl}/obrigacoes, {ApiUrl}/tarefas"
+    Value: !Sub https://${MatrizApi}.execute-api.${AWS::Region}.amazonaws.com
+  FunctionName:
+    Value: !Ref MatrizFunction

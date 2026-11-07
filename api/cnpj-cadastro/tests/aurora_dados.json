@@ -1,0 +1,51 @@
+{
+  "nome_fantasia": "Aurora Energia",
+  "email_alertas": "compliance@aurora-energia.example",
+  "faixa_funcionarios": "501-1000",
+  "setor": "energia_eletrica",
+  "ufs_atuacao": ["SP", "MG"],
+  "municipios_atuacao": ["3509502", "3525904"],
+  "orgaos_fiscalizadores": ["ANEEL", "ONS", "CCEE", "CETESB", "SP Águas", "MTE", "CBPMESP", "RFB"],
+  "unidades": [
+    {"id": "UN-01", "nome": "Sede administrativa Campinas", "tipo": "escritorio", "tags": ["sede"]},
+    {"id": "UN-02", "nome": "SE Pedra Branca", "tipo": "subestacao", "tags": ["alta_tensao", "licenciamento_ambiental"]},
+    {"id": "UN-03", "nome": "PCH Rio Claro", "tipo": "usina", "tags": ["geracao", "recursos_hidricos", "barragem"]},
+    {"id": "UN-04", "nome": "Centro de Operação da Distribuição", "tipo": "centro_operacao", "tags": ["operacao"]}
+  ],
+  "outorgas": [
+    {
+      "id": "OUT-01", "tipo": "licenca_operacao", "numero": "LO 31004567", "orgao": "CETESB",
+      "objeto": "Operação da subestação Pedra Branca 138/13,8 kV", "unidade_id": "UN-02",
+      "validade": "2027-03-10", "antecedencia_renovacao_dias": 120
+    },
+    {
+      "id": "OUT-02", "tipo": "contrato_concessao", "numero": "CC 012/2012-ANEEL", "orgao": "ANEEL",
+      "objeto": "Concessão do serviço público de distribuição de energia elétrica", "unidade_id": "UN-01",
+      "validade": "2042-03-14", "antecedencia_renovacao_dias": 1095
+    },
+    {
+      "id": "OUT-03", "tipo": "outorga_recursos_hidricos", "numero": "Portaria SP Águas 2210/2018", "orgao": "SP Águas",
+      "objeto": "Uso de recursos hídricos para geração hidrelétrica", "unidade_id": "UN-03",
+      "validade": "2028-05-31", "antecedencia_renovacao_dias": 180
+    },
+    {
+      "id": "OUT-04", "tipo": "avcb", "numero": "AVCB 778899", "orgao": "CBPMESP",
+      "objeto": "Auto de Vistoria do Corpo de Bombeiros da sede", "unidade_id": "UN-01",
+      "validade": "2027-08-15", "antecedencia_renovacao_dias": 60
+    }
+  ],
+  "areas": [
+    {"id": "COMP", "nome": "Compliance Regulatório", "responsavel": "Marina Duarte", "email": "compliance@aurora-energia.example"},
+    {"id": "GCTR", "nome": "Gerência de Contabilidade Regulatória", "responsavel": "Paulo Siqueira", "email": "gctr@aurora-energia.example"},
+    {"id": "GMA", "nome": "Gerência de Meio Ambiente", "responsavel": "Lívia Prado", "email": "gma@aurora-energia.example"},
+    {"id": "GSST", "nome": "Saúde e Segurança do Trabalho", "responsavel": "Renato Lima", "email": "sst@aurora-energia.example"},
+    {"id": "GOPR", "nome": "Operação do Sistema", "responsavel": "Carla Nunes", "email": "operacao@aurora-energia.example"},
+    {"id": "GJUR", "nome": "Jurídico Societário", "responsavel": "Tiago Mendes", "email": "juridico@aurora-energia.example"}
+  ],
+  "temas_interesse": [
+    "contabilidade_regulatoria", "qualidade_do_servico", "licenciamento_ambiental",
+    "recursos_hidricos", "seguranca_barragens", "seguranca_do_trabalho", "tarifas", "societario"
+  ],
+  "temas_fora_escopo": ["telecomunicacoes", "petroleo_e_gas"],
+  "certificacoes": ["ISO 14001", "ISO 45001"]
+}

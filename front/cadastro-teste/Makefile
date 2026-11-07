@@ -1,5 +1,6 @@
 # Front de TESTE do fluxo de cadastro (Vite + React + Amplify).
 STACK ?= cnpj-cadastro
+MATRIZ_STACK ?= matriz-api
 REGION ?= us-east-1
 
 .PHONY: install env dev build check clean
@@ -22,7 +23,11 @@ env:
 	  echo "      Ela está publicada com o template atual? Rode: make api-deploy"; \
 	  exit 1; \
 	fi
-	@mv .env.tmp .env && echo ".env gerado a partir da stack $(STACK):" && cat .env
+	@url=$$(aws cloudformation describe-stacks --stack-name $(MATRIZ_STACK) --region $(REGION) \
+	  --query "Stacks[0].Outputs[?OutputKey=='ApiUrl'].OutputValue" --output text 2>/dev/null); \
+	if [ -n "$$url" ] && [ "$$url" != "None" ]; then echo "VITE_MATRIZ_API_URL=$$url" >> .env.tmp; \
+	else echo "(stack $(MATRIZ_STACK) não encontrada: a tela da matriz fica escondida)"; fi
+	@mv .env.tmp .env && echo ".env gerado a partir das stacks $(STACK) e $(MATRIZ_STACK):" && cat .env
 
 dev: install
 	@test -f .env || $(MAKE) env
