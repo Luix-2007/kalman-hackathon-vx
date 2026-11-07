@@ -288,3 +288,9 @@ code { font-family: var(--k-fonte-mono); font-size: 0.9em; background: var(--k-c
 .ufs:disabled .uf { cursor: default; }
 .ufs:disabled .uf:not([aria-pressed="true"]) { opacity: .45; }
 .regime { font-weight: 500; padding: .75rem 1rem; border: 1px solid var(--k-linha); border-radius: var(--k-raio-card); }
+
+/* ══════════════ sua conta ══════════════ */
+.conta { border-top: 1px solid var(--k-linha); padding-top: 2rem; }
+.conta-corpo { display: grid; gap: 1rem; align-content: start; }
+.conta-email { color: var(--k-tinta-3); font-size: var(--k-t-pequeno); }
+.conta-email strong { color: var(--k-tinta-2); font-weight: 500; }

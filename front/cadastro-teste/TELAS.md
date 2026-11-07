@@ -74,7 +74,7 @@ No celular, só o formulário, com o logo (link para `/`) no topo.
 | Modo | O que tem |
 |---|---|
 | **Entrar** | E-mail, senha (com olho), "Esqueci a senha", Entrar, "Criar conta". Conta não confirmada → reenvia o código e vai para Confirmar |
-| **Criar conta** | CNPJ (máscara, conta dos dígitos na hora e consulta na Receita, ver acima), e-mail corporativo, senha com medidor (Fraca/Boa/Forte, mostra o que falta pela regra do Cognito), confirmar senha. Botão só libera com tudo válido |
+| **Criar conta** | CNPJ (máscara, conta dos dígitos na hora e consulta na Receita, ver acima), **seu nome** (obrigatório; vai para o atributo `name` do Cognito, sem espaços sobrando), e-mail corporativo, senha com medidor (Fraca/Boa/Forte, mostra o que falta pela regra do Cognito), confirmar senha. Botão só libera com tudo válido |
 | **Confirmar e-mail** | Código de 6 dígitos num campo grande; "Reenviar código" com espera de 30 s; "Usar outro e-mail" |
 | **Esqueci a senha** | E-mail → "Enviar código" |
 | **Crie uma senha nova** | Código + senha nova (com medidor) + confirmar → salva e já entra |
@@ -114,6 +114,15 @@ Empresa de referência a partir de 07/11: **Light SESA, CNPJ 60.444.437/0001-46*
 - **Equipe:** lista de e-mails, sem selos de papel; "(você)" na própria linha e "Convite pendente até dd/mm/aaaa" nos
   convites. Quem criou a conta convida pelo e-mail, remove membros e cancela convites; o membro pode sair da empresa. O
   convite **não envia e-mail** (é assim na API): a tela avisa para combinar com a pessoa.
+
+- **Sua conta:** nome editável (atributo `name` do Cognito, via `updateUserAttribute`) e o e-mail de acesso. Contas
+  criadas antes do campo de nome veem "Falta o seu nome". A barra do topo mostra o nome (o e-mail fica no tooltip) e a
+  conferência grava `conferido_por_nome` junto com o e-mail.
+
+### Onde fica o nome da pessoa
+No **Cognito** (atributo padrão `name`: já existe no pool, opcional e editável; o app client não restringe atributos),
+sem mudança na stack. O DynamoDB não tem dados da pessoa (só o vínculo usuário → CNPJ e papel) e a API não tem rota
+para isso. Para a lista da Equipe mostrar nomes, a API teria de ler o `name` no Cognito, como já lê o e-mail.
 
 ## E-mail do código (Cognito)
 

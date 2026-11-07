@@ -55,6 +55,7 @@ let convite: Convite | null = modo === "convite"
   : null;
 
 const espera = (ms: number) => new Promise((r) => setTimeout(r, ms));
+let nomeDemo = modo === "membro" || modo === "convite" ? "Bruno Medeiros" : "Ana Ribeiro";
 const erroApi = (status: number, erro: string) => Object.assign(new Error(erro), { status });
 
 export const demoApi = {
@@ -134,6 +135,15 @@ export const demoAuth = {
   async resetPassword(_: unknown) {
     await espera(600);
     return { nextStep: { resetPasswordStep: "CONFIRM_RESET_PASSWORD_WITH_CODE" } };
+  },
+  /** Nome da conta de demonstração (muda com updateUserAttribute). */
+  async fetchUserAttributes() {
+    await espera(200);
+    return { email: DEMO_EMAIL, name: nomeDemo };
+  },
+  async updateUserAttribute(nome: string) {
+    await espera(400);
+    nomeDemo = nome;
   },
   async confirmResetPassword({ confirmationCode }: { username: string; confirmationCode: string; newPassword: string }) {
     await espera(600);

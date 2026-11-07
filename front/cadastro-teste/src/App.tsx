@@ -1,12 +1,14 @@
 import {
   confirmResetPassword,
   confirmSignUp,
+  fetchUserAttributes,
   getCurrentUser,
   resendSignUpCode,
   resetPassword,
   signIn,
   signOut,
   signUp,
+  updateUserAttribute,
 } from "aws-amplify/auth";
 import { startTransition, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { Link, Navigate, Route, Routes, useLocation, useNavigate, useSearchParams } from "react-router-dom";
@@ -28,10 +30,16 @@ type Passo = { isSignedIn?: boolean; nextStep: { signInStep?: string; signUpStep
 const auth = {
   entrar: (email: string, senha: string): Promise<Passo> =>
     demoAtivo ? demoAuth.signIn({ username: email, password: senha }) : signIn({ username: email, password: senha }),
-  criar: (email: string, senha: string): Promise<Passo> =>
+  /** O nome vai para o atributo padrão `name` do Cognito (opcional e editável no pool; o app client grava). */
+  criar: (email: string, senha: string, nome: string): Promise<Passo> =>
     demoAtivo
       ? demoAuth.signUp({})
-      : signUp({ username: email, password: senha, options: { userAttributes: { email } } }),
+      : signUp({ username: email, password: senha, options: { userAttributes: { email, name: nome } } }),
+  lerNome: async (): Promise<string> => (demoAtivo ? demoAuth.fetchUserAttributes() : fetchUserAttributes()).then((a) => a.name?.trim() ?? ""),
+  salvarNome: async (nome: string): Promise<void> => {
+    if (demoAtivo) return demoAuth.updateUserAttribute(nome);
+    await updateUserAttribute({ userAttribute: { attributeKey: "name", value: nome } });
+  },
   confirmar: (email: string, codigo: string): Promise<unknown> =>
     demoAtivo ? demoAuth.confirmSignUp({ username: email, confirmationCode: codigo }) : confirmSignUp({ username: email, confirmationCode: codigo }),
   reenviar: (email: string): Promise<unknown> => (demoAtivo ? demoAuth.resendSignUpCode({}) : resendSignUpCode({ username: email })),
@@ -83,6 +91,8 @@ function mensagemDeErro(err: unknown): string {
 const statusDoErro = (err: unknown) => (err as { status?: number }).status;
 
 const emailValido = (v: string) => /^\S+@\S+\.\S+$/.test(v);
+const limparNome = (v: string) => v.replace(/\s+/g, " ").trim();
+const nomeValido = (v: string) => limparNome(v).length >= 2;
 const formatCnae = (c: string) => { const d = soDigitos(c); return d.length === 7 ? `${d.slice(0, 4)}-${d.slice(4, 5)}/${d.slice(5)}` : c; };
 const MINUSCULAS = new Set(["de", "da", "do", "das", "dos", "e"]);
 const titulo = (s?: string | null) =>
@@ -211,6 +221,7 @@ function Acesso({ modoInicial, onEntrar }: { modoInicial: Modo; onEntrar: (email
   const vindo = state as EstadoAcesso;
   const [modo, setModo] = useState<Modo>(modoInicial);
   const [email, setEmail] = useState(vindo?.email ?? "");
+  const [nome, setNome] = useState("");
   const [senha, setSenha] = useState("");
   const [senha2, setSenha2] = useState("");
   const [cnpj, setCnpj] = useState(() => mascaraCnpj(params.get("cnpj") ?? ""));
@@ -234,7 +245,8 @@ function Acesso({ modoInicial, onEntrar }: { modoInicial: Modo; onEntrar: (email
   // a conta dos dígitos libera na hora; só um "não existe na Receita" segura (Receita fora do ar não segura)
   const cnpjOk = conferencia.valido && conferencia.receita?.estado !== "nao_encontrado";
   const confereOk = senha2.length > 0 && senha2 === senha;
-  const podeCriar = cnpjOk && emailValido(email) && senhaOk && confereOk;
+  const nomeOk = nomeValido(nome);
+  const podeCriar = cnpjOk && nomeOk && emailValido(email) && senhaOk && confereOk;
   const podeRedefinir = codigo.length === 6 && senhaOk && confereOk;
 
   async function executar(fn: () => Promise<void>) {
@@ -270,13 +282,13 @@ function Acesso({ modoInicial, onEntrar }: { modoInicial: Modo; onEntrar: (email
     if (modo === "entrar") return entrar();
 
     if (modo === "criar") {
-      setTocou({ cnpj: true, email: true, senha: true, senha2: true });
+      setTocou({ cnpj: true, nome: true, email: true, senha: true, senha2: true });
       if (!podeCriar) return;
       return executar(async () => {
         // se a consulta à Receita ainda está andando, espera por ela antes de criar a conta
         if ((await conferencia.confirmar())?.estado === "nao_encontrado") throw new Error(MSG_CNPJ_NAO_ENCONTRADO);
         guardarCnpjPendente(soDigitos(cnpj));
-        const r = await auth.criar(email, senha);
+        const r = await auth.criar(email, senha, limparNome(nome));
         if (r.nextStep.signUpStep === "CONFIRM_SIGN_UP") { irPara("confirmar"); setEspera(ESPERA_REENVIO); }
         else await entrar();
       });
@@ -358,6 +370,13 @@ function Acesso({ modoInicial, onEntrar }: { modoInicial: Modo; onEntrar: (email
             </Campo>
           )}
 
+          {modo === "criar" && (
+            <Campo id="nome" rotulo="Seu nome" erro={tocou.nome && !nomeOk ? "Digite seu nome." : ""}>
+              <input id="nome" required value={nome} onChange={(e) => setNome(e.target.value)} autoComplete="name"
+                onBlur={() => setTocou((t) => ({ ...t, nome: true }))} aria-invalid={tocou.nome && !nomeOk} placeholder="Nome e sobrenome" />
+            </Campo>
+          )}
+
           {(modo === "entrar" || modo === "criar" || modo === "esqueci") && (
             <Campo id="email" rotulo={modo === "criar" ? "E-mail corporativo" : "E-mail"}
               erro={modo === "esqueci" && tocou.email && !emailValido(email) ? "Digite um e-mail válido." : ""}>
@@ -432,7 +451,11 @@ function Painel({ email, onSair }: { email: string; onSair: () => void }) {
   const [consultando, setConsultando] = useState(false);
   const [trocando, setTrocando] = useState(false);
   const [erro, setErro] = useState("");
+  /** Nome da pessoa (atributo `name` do Cognito); "" = conta criada antes do campo existir. */
+  const [meuNome, setMeuNome] = useState<string | undefined>(undefined);
   const iniciou = useRef(false);
+
+  useEffect(() => { auth.lerNome().then(setMeuNome).catch(() => setMeuNome("")); }, []);
 
   async function consultar(cnpj: string, consultadoAntes: string | null = cadastro?.consultado_em ?? null) {
     setErro("");
@@ -474,7 +497,7 @@ function Painel({ email, onSair }: { email: string; onSair: () => void }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const nome = cadastro?.empresa?.nome_fantasia || cadastro?.empresa?.razao_social;
+  const nomeEmpresa = cadastro?.empresa?.nome_fantasia || cadastro?.empresa?.razao_social;
   useEffect(() => { document.title = "Kalman · Painel"; }, []);
   let corpo: ReactNode;
   if (cadastro === undefined) corpo = <div className="centro-area"><Carregando /></div>;
@@ -482,7 +505,7 @@ function Painel({ email, onSair }: { email: string; onSair: () => void }) {
   else if (!cadastro && convite) corpo = <ConviteRecebido convite={convite} onAceito={() => carregar()} onRecusado={() => setConvite(null)} />;
   else if (!cadastro || trocando) corpo = <PedirCnpj erro={erro} onConsultar={(c) => consultar(c)} onCancelar={cadastro ? () => { setTrocando(false); setErro(""); } : undefined} />;
   else corpo = (
-    <Dados cadastro={cadastro} email={email} onSalvo={setCadastro} onTrocar={() => setTrocando(true)}
+    <Dados cadastro={cadastro} email={email} meuNome={meuNome ?? ""} onNome={setMeuNome} onSalvo={setCadastro} onTrocar={() => setTrocando(true)}
       onReconsultar={() => cadastro.cnpj && consultar(cadastro.cnpj)}
       onSaiu={() => { setCadastro(null); carregar().catch(() => undefined); }} />
   );
@@ -492,9 +515,9 @@ function Painel({ email, onSair }: { email: string; onSair: () => void }) {
       <header className="barra">
         <div className="barra-linha">
           <Link to="/" aria-label="Kalman, ir para o início"><Marca className="barra-marca" /></Link>
-          {nome && !consultando && <span className="barra-empresa">{titulo(nome)}</span>}
+          {nomeEmpresa && !consultando && <span className="barra-empresa">{titulo(nomeEmpresa)}</span>}
           <div className="barra-direita">
-            <span className="barra-email">{email}</span>
+            <span className="barra-email" title={email}>{meuNome || email}</span>
             <button className="k-btn k-btn--contorno k-btn--sm" type="button" onClick={onSair}>Sair</button>
           </div>
         </div>
@@ -623,8 +646,9 @@ function regimeTributario(e: Empresa) {
 /** A Receita chama de "Demais" quem não é ME nem EPP. */
 const porte = (p: string) => (p.toLowerCase() === "demais" ? "Demais (não é ME nem EPP)" : p);
 
-function Dados({ cadastro, email, onSalvo, onTrocar, onReconsultar, onSaiu }: {
-  cadastro: Cadastro; email: string; onSalvo: (c: Cadastro) => void; onTrocar: () => void; onReconsultar: () => void; onSaiu: () => void;
+function Dados({ cadastro, email, meuNome, onNome, onSalvo, onTrocar, onReconsultar, onSaiu }: {
+  cadastro: Cadastro; email: string; meuNome: string; onNome: (nome: string) => void; onSalvo: (c: Cadastro) => void;
+  onTrocar: () => void; onReconsultar: () => void; onSaiu: () => void;
 }) {
   const e = cadastro.empresa;
   const leitura = cadastro.papel === "membro";
@@ -652,7 +676,9 @@ function Dados({ cadastro, email, onSalvo, onTrocar, onReconsultar, onSaiu }: {
     setSalvando(true); setMsg(null);
     try {
       const ordenadas = UFS.filter((u) => ufs.includes(u));
-      onSalvo(await api.salvarDados({ conferido_em: new Date().toISOString(), conferido_por: email, ufs_atuacao: ordenadas.join(",") }));
+      onSalvo(await api.salvarDados({
+        conferido_em: new Date().toISOString(), conferido_por: email, conferido_por_nome: meuNome || null, ufs_atuacao: ordenadas.join(","),
+      }));
       setMsg({ tipo: "ok", texto: "Dados confirmados." });
     } catch (err) {
       setMsg({ tipo: "erro", texto: mensagemDeErro(err) });
@@ -757,7 +783,9 @@ function Dados({ cadastro, email, onSalvo, onTrocar, onReconsultar, onSaiu }: {
           {msg ? (
             <span className={`salvar-msg ${msg.tipo}`} role="status">{msg.texto}</span>
           ) : conferidoEm ? (
-            <span className="salvar-msg ok">Conferido em {dataHoraBR(conferidoEm)}{texto(d.conferido_por) ? ` por ${texto(d.conferido_por)}` : ""}</span>
+            <span className="salvar-msg ok">
+              Conferido em {dataHoraBR(conferidoEm)}{texto(d.conferido_por_nome) || texto(d.conferido_por) ? ` por ${texto(d.conferido_por_nome) || texto(d.conferido_por)}` : ""}
+            </span>
           ) : (
             <span className="salvar-msg">{leitura ? "Aguardando a conferência de quem criou a conta" : "Os dados conferem?"}</span>
           )}
@@ -770,7 +798,57 @@ function Dados({ cadastro, email, onSalvo, onTrocar, onReconsultar, onSaiu }: {
       </form>
 
       <Equipe key={cadastro.cnpj} cadastro={cadastro} onSaiu={onSaiu} />
+
+      <SuaConta email={email} nome={meuNome} onNome={onNome} />
     </div>
+  );
+}
+
+// ─────────────────────────── sua conta: nome (Cognito) ───────────────────────────
+
+function SuaConta({ email, nome, onNome }: { email: string; nome: string; onNome: (nome: string) => void }) {
+  const [valor, setValor] = useState(nome);
+  const [salvando, setSalvando] = useState(false);
+  const [msg, setMsg] = useState<{ tipo: "ok" | "erro"; texto: string } | null>(null);
+  useEffect(() => setValor(nome), [nome]);
+  const limpo = limparNome(valor);
+  const mudou = limpo !== nome;
+
+  async function salvar(e: FormEvent) {
+    e.preventDefault();
+    if (!nomeValido(valor)) { setMsg({ tipo: "erro", texto: "Digite seu nome." }); return; }
+    setSalvando(true); setMsg(null);
+    try {
+      await auth.salvarNome(limpo);
+      onNome(limpo);
+      setMsg({ tipo: "ok", texto: "Nome salvo." });
+    } catch (err) {
+      setMsg({ tipo: "erro", texto: mensagemDeErro(err) });
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  return (
+    <section className="bloco conta" aria-labelledby="t-conta">
+      <div className="bloco-titulo">
+        <h2 id="t-conta">Sua conta</h2>
+        <p>Aparece para a equipe e nos registros do que você conferir.</p>
+      </div>
+      <form className="conta-corpo" onSubmit={salvar} noValidate>
+        {!nome && <p className="nota-leitura"><span className="k-ponto" aria-hidden="true" /> Falta o seu nome.</p>}
+        <div className="k-campo">
+          <label htmlFor="meu-nome">Seu nome</label>
+          <div className="convidar-linha">
+            <input id="meu-nome" value={valor} onChange={(e) => { setValor(e.target.value); setMsg(null); }} autoComplete="name"
+              placeholder="Nome e sobrenome" aria-invalid={msg?.tipo === "erro" || undefined} />
+            <button className="k-btn k-btn--grafite" type="submit" disabled={salvando || !mudou}>{salvando ? "Salvando…" : "Salvar"}</button>
+          </div>
+        </div>
+        <p className="conta-email">E-mail de acesso: <strong>{email}</strong></p>
+        {msg && <p className={`msg ${msg.tipo === "erro" ? "msg-erro" : "msg-info"}`} role={msg.tipo === "erro" ? "alert" : "status"}>{msg.texto}</p>}
+      </form>
+    </section>
   );
 }
 
