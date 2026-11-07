@@ -40,6 +40,27 @@ Resources:
         RecoveryMechanisms:
           - Name: verified_email
             Priority: 1
+      LambdaConfig:                 # e-mails de código (cadastro, reenvio, esqueci a senha) na identidade do Kalman
+        CustomMessage: !GetAtt CustomMessageFunction.Arn
+
+  # Monta o assunto e o HTML dos e-mails de código. O envio continua pelo Cognito (remetente padrão).
+  CustomMessageFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: email_cognito.handler
+      Runtime: python3.13
+      Architectures: [arm64]
+      MemorySize: 128
+      Timeout: 5
+
+  CustomMessagePermission:          # deixa o Cognito chamar a Lambda
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !GetAtt CustomMessageFunction.Arn
+      Principal: cognito-idp.amazonaws.com
+      SourceArn: !GetAtt UserPool.Arn
 
   # "App" que o front usa para fazer login. Sem secret porque roda no navegador.
   UserPoolClient:

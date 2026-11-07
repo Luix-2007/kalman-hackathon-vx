@@ -103,6 +103,16 @@ await fetch(`${API_URL}/me`, { method: "PATCH", headers: auth, body: JSON.string
 
 O e-mail padrão do Cognito tem limite baixo de envios por dia. Antes de produção, configure o Amazon SES no User Pool.
 
+### E-mails de código (gatilho CustomMessage)
+
+`src/email_cognito.py` é chamado pelo Cognito antes de cada e-mail com código e devolve assunto e HTML na identidade do
+Kalman: um texto para cadastro e reenvio, outro para "esqueci a senha". Outros tipos (AdminCreateUser, MFA) ficam com a
+mensagem padrão. O envio continua pelo Cognito, com o remetente padrão (`no-reply@verificationemail.com`). Se a Lambda
+falhar, o cadastro falha junto: o HTML não depende de nada externo e tem teste (`tests/test_email_cognito.py`).
+
+⚠️ Um `sam deploy` feito de uma branch sem este gatilho tira o `LambdaConfig` do User Pool, e o e-mail volta ao padrão em
+inglês.
+
 ## front/cadastro-teste
 
 Front de **teste** do fluxo completo: login no Cognito, envio do CNPJ, espera pela consulta, formulário pré-preenchido com os dados da Receita e organização (convidar, aceitar convite, remover membros). Foi feito com Vite, React, TypeScript e Amplify, a mesma base do Lovable. O arquivo `src/api.ts` é o cliente da API que serve de referência para o front definitivo.
