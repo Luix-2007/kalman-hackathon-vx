@@ -1,0 +1,166 @@
+{
+  "Comment": "Lakehouse usuarios-cnpj: export do DynamoDB -> Landing -> Bronze -> Silver -> Gold -> docs da KB -> sync da KB",
+  "StartAt": "TemDataInformada",
+  "TimeoutSeconds": 14400,
+  "States": {
+    "TemDataInformada": {
+      "Type": "Choice",
+      "Choices": [{ "Variable": "$.run_date", "IsPresent": true, "Next": "UsarDataInformada" }],
+      "Default": "UsarDataDeHoje"
+    },
+    "UsarDataInformada": {
+      "Type": "Pass",
+      "Parameters": {
+        "run_date.$": "$.run_date",
+        "kb_id": "",
+        "kb_ds": ""
+      },
+      "Next": "PedirExport"
+    },
+    "UsarDataDeHoje": {
+      "Type": "Pass",
+      "Parameters": {
+        "run_date.$": "States.ArrayGetItem(States.StringSplit($$.Execution.StartTime, 'T'), 0)",
+        "kb_id": "",
+        "kb_ds": ""
+      },
+      "Next": "PedirExport"
+    },
+    "PedirExport": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::aws-sdk:dynamodb:exportTableToPointInTime",
+      "Parameters": {
+        "TableArn": "arn:aws:dynamodb:us-east-1:520499255485:table/cnpj-cadastro-UsuariosCnpjTable-14MB1HKZY61SQ",
+        "S3Bucket": "lakehouse-pipeline-exportbucket-eyb1ppni8ypo",
+        "S3Prefix.$": "States.Format('usuarios_cnpj/{}', $.run_date)",
+        "ExportFormat": "DYNAMODB_JSON",
+        "ExportType": "FULL_EXPORT"
+      },
+      "ResultSelector": { "arn.$": "$.ExportDescription.ExportArn" },
+      "ResultPath": "$.export",
+      "Retry": [{ "ErrorEquals": ["DynamoDb.LimitExceededException", "DynamoDb.InternalServerErrorException"],
+                  "IntervalSeconds": 30, "MaxAttempts": 3, "BackoffRate": 2 }],
+      "Catch": [{ "ErrorEquals": ["States.ALL"], "ResultPath": "$.erro", "Next": "AvisarFalha" }],
+      "Next": "EsperarExport"
+    },
+    "EsperarExport": {
+      "Type": "Wait",
+      "Seconds": 60,
+      "Next": "ConferirExport"
+    },
+    "ConferirExport": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::aws-sdk:dynamodb:describeExport",
+      "Parameters": { "ExportArn.$": "$.export.arn" },
+      "ResultSelector": { "status.$": "$.ExportDescription.ExportStatus" },
+      "ResultPath": "$.export.estado",
+      "Catch": [{ "ErrorEquals": ["States.ALL"], "ResultPath": "$.erro", "Next": "AvisarFalha" }],
+      "Next": "ExportPronto"
+    },
+    "ExportPronto": {
+      "Type": "Choice",
+      "Choices": [
+        { "Variable": "$.export.estado.status", "StringEquals": "COMPLETED", "Next": "Landing" },
+        { "Variable": "$.export.estado.status", "StringEquals": "FAILED", "Next": "ExportFalhou" }
+      ],
+      "Default": "EsperarExport"
+    },
+    "ExportFalhou": {
+      "Type": "Pass",
+      "Parameters": { "Error": "ExportFailed", "Cause": "O export do DynamoDB terminou com status FAILED" },
+      "ResultPath": "$.erro",
+      "Next": "AvisarFalha"
+    },
+    "Landing": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::glue:startJobRun.sync",
+      "Parameters": {
+        "JobName": "EtlJob-sbGA2AcilabW",
+        "Arguments": { "--STAGE": "landing", "--RUN_DATE.$": "$.run_date", "--EXPORT_ARN.$": "$.export.arn" }
+      },
+      "ResultPath": null,
+      "Retry": [{ "ErrorEquals": ["Glue.ConcurrentRunsExceededException", "Glue.AWSGlueException"],
+                  "IntervalSeconds": 30, "MaxAttempts": 6, "BackoffRate": 1.5 }],
+      "Catch": [{ "ErrorEquals": ["States.ALL"], "ResultPath": "$.erro", "Next": "AvisarFalha" }],
+      "Next": "Bronze"
+    },
+    "Bronze": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::glue:startJobRun.sync",
+      "Parameters": {
+        "JobName": "EtlJob-sbGA2AcilabW",
+        "Arguments": { "--STAGE": "bronze", "--RUN_DATE.$": "$.run_date" }
+      },
+      "ResultPath": null,
+      "Retry": [{ "ErrorEquals": ["Glue.ConcurrentRunsExceededException", "Glue.AWSGlueException"],
+                  "IntervalSeconds": 30, "MaxAttempts": 6, "BackoffRate": 1.5 }],
+      "Catch": [{ "ErrorEquals": ["States.ALL"], "ResultPath": "$.erro", "Next": "AvisarFalha" }],
+      "Next": "Silver"
+    },
+    "Silver": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::glue:startJobRun.sync",
+      "Parameters": {
+        "JobName": "EtlJob-sbGA2AcilabW",
+        "Arguments": { "--STAGE": "silver", "--RUN_DATE.$": "$.run_date" }
+      },
+      "ResultPath": null,
+      "Retry": [{ "ErrorEquals": ["Glue.ConcurrentRunsExceededException", "Glue.AWSGlueException"],
+                  "IntervalSeconds": 30, "MaxAttempts": 6, "BackoffRate": 1.5 }],
+      "Catch": [{ "ErrorEquals": ["States.ALL"], "ResultPath": "$.erro", "Next": "AvisarFalha" }],
+      "Next": "Gold"
+    },
+    "Gold": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::glue:startJobRun.sync",
+      "Parameters": {
+        "JobName": "EtlJob-sbGA2AcilabW",
+        "Arguments": { "--STAGE": "gold", "--RUN_DATE.$": "$.run_date" }
+      },
+      "ResultPath": null,
+      "Retry": [{ "ErrorEquals": ["Glue.ConcurrentRunsExceededException", "Glue.AWSGlueException"],
+                  "IntervalSeconds": 30, "MaxAttempts": 6, "BackoffRate": 1.5 }],
+      "Catch": [{ "ErrorEquals": ["States.ALL"], "ResultPath": "$.erro", "Next": "AvisarFalha" }],
+      "Next": "DocsDaKB"
+    },
+    "DocsDaKB": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::glue:startJobRun.sync",
+      "Parameters": {
+        "JobName": "EtlJob-sbGA2AcilabW",
+        "Arguments": { "--STAGE": "kb_docs", "--RUN_DATE.$": "$.run_date" }
+      },
+      "ResultPath": null,
+      "Retry": [{ "ErrorEquals": ["Glue.ConcurrentRunsExceededException", "Glue.AWSGlueException"],
+                  "IntervalSeconds": 30, "MaxAttempts": 6, "BackoffRate": 1.5 }],
+      "Catch": [{ "ErrorEquals": ["States.ALL"], "ResultPath": "$.erro", "Next": "AvisarFalha" }],
+      "Next": "TemKnowledgeBase"
+    },
+    "TemKnowledgeBase": {
+      "Type": "Choice",
+      "Choices": [{ "Variable": "$.kb_id", "StringEquals": "", "Next": "Sucesso" }],
+      "Default": "SincronizarKB"
+    },
+    "SincronizarKB": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::aws-sdk:bedrockagent:startIngestionJob",
+      "Parameters": { "KnowledgeBaseId.$": "$.kb_id", "DataSourceId.$": "$.kb_ds" },
+      "ResultPath": null,
+      "Catch": [{ "ErrorEquals": ["States.ALL"], "ResultPath": "$.erro", "Next": "AvisarFalha" }],
+      "Next": "Sucesso"
+    },
+    "Sucesso": { "Type": "Succeed" },
+    "AvisarFalha": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::sns:publish",
+      "Parameters": {
+        "TopicArn": "arn:aws:sns:us-east-1:520499255485:lakehouse-pipeline-AlertTopic-2aTErIm9Volj",
+        "Subject": "Pipeline usuarios-cnpj falhou",
+        "Message.$": "States.Format('Execução {} falhou: {}', $$.Execution.Id, States.JsonToString($.erro))"
+      },
+      "ResultPath": null,
+      "Next": "Falhou"
+    },
+    "Falhou": { "Type": "Fail", "Error": "PipelineFalhou", "Cause": "Veja o estado AvisarFalha e os logs do job Glue" }
+  }
+}

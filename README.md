@@ -1,125 +1,159 @@
-# kalman-hackathon-vx
+# ETL no Glue com DuckDB e Iceberg: pacote de referência
 
-## api/cnpj-cadastro
+Pacote para refazer depois, em outra conta ou em outro evento. São **só arquivos**: nada aqui
+implanta, agenda ou cria recurso na AWS.
 
-Cadastro de usuários pessoa jurídica: login com **Amazon Cognito**, consulta do CNPJ no [OpenCNPJ](https://api.opencnpj.org) e dados salvos no DynamoDB.
+Contém os dois ETL **básicos que ficaram prontos e rodaram ponta a ponta** em 07/11/2026. Não
+contém o trabalho de embeddings, classificação por tipo e Knowledge Base, que estava em
+andamento quando o pacote foi gerado.
+
+A descrição detalhada do uso do DuckDB, que é o coração das duas pipelines, está em
+**[DUCKDB.md](DUCKDB.md)**.
+
+## O que são os dois ETL
+
+| | `cadastro/` | `atos-dou/` |
+|---|---|---|
+| Origem | tabela DynamoDB, via export nativo para o S3 | ZIP mensal da Imprensa Nacional, por HTTP |
+| Etapas | `landing → bronze → silver → gold → kb_docs` | `landing → bronze → prata → ouro` |
+| Formato | Landing e Bronze em Parquet, Silver e Gold em Iceberg | Landing em Parquet, resto em Iceberg |
+| Runtime | Glue Python Shell, Python 3.9, 1 DPU | igual |
+| Engine | DuckDB 1.2.2 | igual |
+| Escrita Iceberg | PyIceberg 0.9.1 no Glue Data Catalog | igual |
+| Testes | 7, sem AWS | 17, sem AWS e sem rede |
+
+As duas gravam no **mesmo bucket** e no **mesmo Glue Data Catalog**, mas têm job Glue e máquina
+de estados separados. É isso que permite rodar uma sem mexer na outra.
+
+## Onde cada arquivo roda
+
+Isso importa mais do que parece: cada script tem um runtime e uma identidade diferente.
+
+| Arquivo | Onde roda | Identidade |
+|---|---|---|
+| `cadastro/src/etl.py` | Glue Python Shell 3.9 | role do job Glue |
+| `atos-dou/src/etl_dou.py` | Glue Python Shell 3.9 | role do job Glue |
+| `*/tests/*.py` | máquina local, Python 3.9 | nenhuma, não toca a AWS |
+| `*/scripts/verificar.py` | máquina local, Python 3.9 | suas credenciais, somente leitura |
+| `lambda-origem/src/app.py` | AWS Lambda, Python 3.13 | role da Lambda |
+| `databricks-origem/*.py` | Databricks, PySpark | não roda mais, é referência |
+
+**Um login local não dá acesso ao job Glue.** A role do job precisa das permissões do próprio
+`template.yaml`, e um `aws sts get-caller-identity` que funciona no seu terminal não prova nada
+sobre o que o job consegue fazer.
+
+## Conteúdo
 
 ```
-Front ──login──> Cognito (e-mail + senha) ──> access token
-Front ──token──> API Gateway (valida o token) ──> Lambdas ──> DynamoDB
-                                                    └─ POST: EventBridge ──> consulta OpenCNPJ
+cadastro/                 ETL do DynamoDB (as versões que estão implantadas e funcionando)
+  src/etl.py              426 linhas, 5 etapas escolhidas por --STAGE
+  tests/test_etl.py       7 testes, catálogo Iceberg em SQLite, pastas locais
+  scripts/verificar.py    confere o lake depois de uma execução, sem Athena
+  statemachine/           definição da Step Functions, extraída do que está implantado
+  template.yaml           SAM, extraído do stack implantado (628 linhas)
+  pyproject.toml          dependências diretas
+atos-dou/                 ETL dos atos do DOU, portado do Databricks
+  src/etl_dou.py          682 linhas, coleta HTTP + 4 etapas
+  tests/test_etl_dou.py   17 testes, com ZIP montado no próprio teste
+  scripts/verificar.py
+  statemachine/ template.yaml Makefile pyproject.toml
+lambda-origem/            a Lambda que alimenta o lake. É o contrato de entrada, não é Glue
+databricks-origem/        os scripts PySpark originais que o atos-dou/ substituiu
+DUCKDB.md                 como o DuckDB foi usado, com o SQL real
 ```
 
-- **Cognito** guarda e-mail e senha. A senha nunca passa pelo nosso código nem pelo DynamoDB.
-- **DynamoDB** (tabela única) guarda a organização de cada CNPJ (dados da empresa e formulário), a qual organização cada usuário pertence e os convites pendentes.
-- O `user_id` **sempre** vem do token. A API ignora qualquer `user_id` enviado pelo front.
+### Por que o `cadastro/` vem do que está implantado
 
-### Pré-requisitos
+O `src/etl.py`, o `template.yaml` e a máquina de estados foram extraídos da AWS, não copiados
+do diretório de trabalho: o script do bucket de artefatos do job Glue, o template com
+`get-template --template-stage Original` e a definição com `describe-state-machine`. O motivo é
+que o repositório estava sendo alterado em paralelo, com a parte de embeddings. O que está aqui
+é a versão que **de fato rodou verde**, não uma versão intermediária.
 
-- [uv](https://docs.astral.sh/uv/)
-- [AWS SAM CLI](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/install-sam-cli.html) (só para build e deploy)
+Consequência: a máquina de estados deste pacote está com as substituições **já resolvidas**, ou
+seja tem ARN e nome de recurso da conta `520499255485`. Ao refazer, troque por `${}` e
+`DefinitionSubstitutions`, ou use o `atos-dou/statemachine/pipeline.asl.json`, que está no
+formato de origem, como modelo.
 
-### Comandos
+## Como refazer, na ordem
 
-Da raiz do repositório (cada parte tem seu próprio `Makefile`, e a raiz só delega):
+Pré-requisitos: [uv](https://docs.astral.sh/uv/), [AWS SAM CLI](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/install-sam-cli.html),
+AWS CLI autenticado. Validado em Linux x86_64 com Python 3.9 no venv e SAM CLI 1.171.0.
 
 ```bash
-make help          # lista os alvos
-make api-test      # uv sync + pytest (local: DynamoDB com moto, OpenCNPJ com servidor local)
-make api-smoke-login  # login + rotas recusam chamadas sem token (stack publicada, usa suas credenciais AWS)
-make api-smoke     # fluxo completo: CNPJ, formulário, isolamento, convite, membro, troca de CNPJ (stack publicada)
-make api-build     # sam build
-make api-deploy    # sam build + sam deploy (samconfig.toml: stack cnpj-cadastro, us-east-1)
-make api-clean     # remove .venv e caches
-make test          # testes de todas as partes
+# 1. rodar os testes primeiro, sem nenhuma AWS
+cd cadastro && uv sync && uv run pytest -q     # 7 passam
+cd ../atos-dou && uv sync && uv run pytest -q  # 17 passam
+
+# 2. a Lambda de origem, que cria a tabela DynamoDB
+cd ../lambda-origem && sam deploy --guided
+
+# 3. o ETL do cadastro: buckets, databases, job Glue, Step Functions
+cd ../cadastro && sam deploy --guided
+
+# 4. o ETL dos atos, que reaproveita o bucket e os databases do passo 3
+cd ../atos-dou && sam deploy --guided \
+  --parameter-overrides LakeBucketName=<bucket do passo 3>
 ```
 
-O ambiente Python (`pyproject.toml`, `uv.lock`, `.venv`) fica em `api/` e é compartilhado por todas as lambdas. Cada lambda tem seu `template.yaml` e seu `Makefile` de build/deploy. Ou direto na pasta, sem o prefixo: `cd api && make test`.
+A tabela DynamoDB precisa de **PITR ligado** antes do passo 3, porque o
+`ExportTableToPointInTime` exige. O `template.yaml` do `lambda-origem/` já liga.
 
-Os smoke tests criam usuários de teste direto no Cognito (sem enviar e-mail) e apagam esses usuários e os itens deles no final.
+Valores específicos de conta que você tem de trocar: a região (`us-east-1`), o nome dos
+databases do Glue se já existirem, o e-mail de alerta do SNS e o nome do bucket do lake no
+passo 4.
 
-### Rotas
+## Validação feita neste pacote
 
-Todas exigem o header `Authorization: Bearer <access token do Cognito>`. Sem token, a API responde **401**.
+| O que foi verificado | Resultado |
+|---|---|
+| `cadastro/tests` rodando de dentro do pacote, em venv isolado | 7 passam |
+| `atos-dou/tests` rodando de dentro do pacote, em venv isolado | 17 passam |
+| `cadastro/src/etl.py` contém código de embeddings | não, zero ocorrências |
+| Credencial, `.venv`, `__pycache__`, `.env` no pacote | nenhum |
 
-| Rota | Body | Resposta |
-|---|---|---|
-| `POST /cadastro` | `{"cnpj": "00.000.000/0001-91"}` | **202** na hora: cria a organização do CNPJ com o usuário como dono, e a consulta roda em segundo plano (~3s). **409** se o CNPJ já tiver dono. **400** se o CNPJ for inválido. |
-| `GET /cadastro/me` | | **200** com `papel`, `cnpj`, `status`, `empresa` (sem sócios) e `dados` da organização. **404** se o usuário ainda não participa de uma. |
-| `PATCH /cadastro/me` | `{"dados": {"telefone": "1199...", "site": null}}` | **200** com o cadastro atualizado. Só o dono (**403** para membros). Faz merge campo a campo, e `null` apaga o campo. **404** se não houver organização. |
+O que **não** foi verificado: nada aqui foi implantado a partir deste pacote. As duas pipelines
+rodaram verde no repositório de origem, e os artefatos do `cadastro/` vieram de lá, mas um
+`sam deploy` a partir desta pasta é um caminho novo e não exercitado.
 
-`status` pode ser `processando` (logo depois do POST), `ativa`, `inativa` ou `nao_encontrado`. Os campos de `dados` ainda são livres (snake_case). Depois de definir o formulário, liste-os em `CAMPOS_PERMITIDOS` em `src/usuario.py`.
+## Armadilhas do Glue Python Shell que custaram execuções falhadas
 
-### Organizações: dono e membros
+Se for refazer, estas cinco são as que quebram primeiro. Todas já estão resolvidas no código do
+pacote, e perder qualquer uma faz o job falhar antes de processar uma linha.
 
-Cada CNPJ é uma **organização** com um único dono: quem enviou o CNPJ primeiro. O dono convida outras pessoas pelo e-mail. Os membros veem os mesmos dados da empresa e do formulário, mas não editam. Cada usuário participa de uma única organização, como dono ou como membro.
+1. **`GlueVersion: "3.0"` é obrigatório** com `PythonVersion: "3.9"`. Sem a propriedade o Glue
+   assume a 1.0, que é Python 3.6, e o `--additional-python-modules` não é aplicado.
+2. **`--additional-python-modules` é separado por vírgula antes de chegar ao pip.** O extra
+   `pyiceberg[glue,pyarrow]==0.9.1` é partido em `pyiceberg[glue` e `pyarrow]==0.9.1`, e o pip
+   responde `Invalid requirement`. Escreva um spec por extra.
+3. **A role do job precisa ler o próprio script no bucket de artefatos do SAM.** A policy
+   `AWSGlueServiceRole` só cobre buckets `aws-glue-*`, então sem uma permissão extra em
+   `aws-sam-cli-managed-default-samclisourcebucket-*` o job toma `403` no `HeadObject`.
+4. **O `HOME` do job é `/` e não é gravável.** O DuckDB tenta guardar extensões em `/.duckdb/`
+   e morre. O `connect()` aponta `home_directory` e `extension_directory` para o `TMPDIR`.
+5. **Uma etapa logo depois da outra dá `Concurrent runs exceeded`.** Com
+   `MaxConcurrentRuns: 1`, o contador do Glue demora a liberar e a etapa seguinte é recusada.
+   Cada tarefa Glue da máquina de estados tem `Retry` em
+   `Glue.ConcurrentRunsExceededException`.
 
-| Rota | Quem | Body | Resposta |
-|---|---|---|---|
-| `GET /cadastro/membros` | dono e membros | | **200** com `dono`, `membros` e, só para o dono, `convites` pendentes |
-| `POST /cadastro/membros` | dono | `{"email": "pessoa@empresa.com"}` | **201**. Convite válido por 7 dias. **409** se a pessoa já faz parte ou já tem convite de outra organização |
-| `DELETE /cadastro/membros/{id}` | dono, ou o próprio membro | | `id` = `user_id` remove o membro (ou é o membro saindo); `id` = e-mail cancela o convite |
-| `GET /cadastro/convite` | convidado | | **200** com o convite pendente para o e-mail do usuário. **404** se não houver |
-| `POST /cadastro/convite` | convidado | | **200**: aceita e vira membro. **409** se já participa de uma organização |
-| `DELETE /cadastro/convite` | convidado | | **200**: recusa |
+Mais duas de dados, que não derrubam o job mas corrompem o resultado:
 
-O convite não envia e-mail. O dono avisa a pessoa, ela cria a conta com o e-mail convidado e vê o convite ao entrar. O e-mail vem do Cognito, que só confirma a conta depois que a pessoa digita o código recebido. Por isso só quem tem acesso ao e-mail aceita o convite.
+6. **`DECIMAL(20,2)`, não `(18,2)`.** Com precisão 18 o PyIceberg 0.9 falha no upsert.
+7. **Não leia os Parquet de uma tabela Iceberg direto.** Vêm arquivos de snapshots antigos.
+   Leia pelo catálogo, por Athena ou PyIceberg.
 
-O `PATCH /cadastro/me` responde **403** para membros. O dono só troca de CNPJ enquanto a organização não tem membros nem convites pendentes (senão **409**). O CNPJ anterior fica livre e o formulário vai junto. Um membro não cadastra CNPJ: precisa sair da organização antes.
+## Dependências
 
-Tudo fica na tabela única, com a chave `user_id` (detalhes em `src/dados.py`):
+Diretas, iguais nos dois ETL e fixadas também no `--additional-python-modules` do template:
 
-| `user_id` (chave) | Campos | Para quê |
-|---|---|---|
-| `<sub do Cognito>` | `cnpj`, `papel` (`dono` ou `membro`) | a organização do usuário |
-| `CNPJ#<cnpj>` | `dono`, `dono_email`, `status`, `empresa`, `dados`, `membros`, `convites` | a organização: um item por CNPJ, um dono |
-| `CONVITE#<email>` | `cnpj`, `convidado_por`, `expira_em` (TTL) | convite pendente, um por e-mail |
-
-O DynamoDB só garante unicidade pela chave. Por isso, criar a organização, aceitar um convite e remover um membro são transações: ou grava tudo, ou nada. Se duas pessoas enviarem o mesmo CNPJ ao mesmo tempo, só uma vira dona; a outra recebe 409. A Lambda da consulta só grava o resultado se quem disparou o evento ainda é o dono do CNPJ.
-
-Ninguém prova que é dono do CNPJ: quem enviar primeiro fica com ele. Se precisar disso, valide a titularidade (por exemplo, com certificado e-CNPJ) antes de criar a organização.
-
-### Como o front usa (Amplify v6)
-
-Os valores vêm dos outputs da stack: `aws cloudformation describe-stacks --stack-name cnpj-cadastro --query "Stacks[0].Outputs"`.
-
-```js
-import { Amplify } from "aws-amplify";
-import { signUp, confirmSignUp, signIn, fetchAuthSession } from "aws-amplify/auth";
-
-Amplify.configure({ Auth: { Cognito: { userPoolId: "<UserPoolId>", userPoolClientId: "<UserPoolClientId>" } } });
-
-await signUp({ username: email, password });                // Cognito envia um código por e-mail
-await confirmSignUp({ username: email, confirmationCode });
-await signIn({ username: email, password });
-
-const { tokens } = await fetchAuthSession();                 // renova o token sozinho quando expira
-const auth = { Authorization: `Bearer ${tokens.accessToken}`, "Content-Type": "application/json" };
-
-await fetch(API_URL, { method: "POST", headers: auth, body: JSON.stringify({ cnpj }) });
-const cadastro = await (await fetch(`${API_URL}/me`, { headers: auth })).json();   // repita enquanto status for "processando"
-await fetch(`${API_URL}/me`, { method: "PATCH", headers: auth, body: JSON.stringify({ dados: { telefone } }) });
+```
+duckdb==1.2.2
+pyiceberg[glue,pyarrow]==0.9.1
 ```
 
-O e-mail padrão do Cognito tem limite baixo de envios por dia. Antes de produção, configure o Amazon SES no User Pool.
+De desenvolvimento: `pytest`, `boto3`, `cfn-lint`, `pyiceberg[sql-sqlite]==0.9.1`, esse último
+para o catálogo Iceberg em SQLite dos testes.
 
-## front/cadastro-teste
-
-Front de **teste** do fluxo completo: login no Cognito, envio do CNPJ, espera pela consulta, formulário pré-preenchido com os dados da Receita e organização (convidar, aceitar convite, remover membros). Foi feito com Vite, React, TypeScript e Amplify, a mesma base do Lovable. O arquivo `src/api.ts` é o cliente da API que serve de referência para o front definitivo.
-
-```bash
-make front-env     # gera front/cadastro-teste/.env com os outputs da stack (precisa de credenciais AWS)
-make front-dev     # http://localhost:5173 (porta fixa: é a que está liberada no CORS)
-make front-check   # typecheck
-```
-
-Os campos do formulário de teste ficam em `src/campos.ts`. Quando os campos reais forem definidos, troque essa lista e preencha `CAMPOS_PERMITIDOS` na API.
-
-### Front no Lovable: cuidados
-
-- **CORS:** o API Gateway só aceita a origem exata (ou `*`), sem curinga de subdomínio. Inclua a URL de preview do Lovable, a publicada (`*.lovable.app`) e o domínio próprio, se houver:
-  `sam deploy --parameter-overrides 'AllowedOrigins="http://localhost:5173,https://<preview>,https://<app>.lovable.app"'`
-- **Autenticação:** o Lovable sugere Supabase / Lovable Cloud para login. Não use. O login é o Cognito, via `aws-amplify/auth`, como em `src/App.tsx`. Os dois juntos criariam usuários em dois lugares.
-- **Configuração:** `UserPoolId`, `UserPoolClientId` e `ApiUrl` são públicos e podem ir no código. Nunca coloque credenciais AWS (access key) no front.
-- **Contrato:** sempre `Authorization: Bearer <accessToken>`. Nunca envie `user_id`. Depois do POST, repita o GET `/cadastro/me` até aparecer um `consultado_em` novo (o `aguardarConsulta` faz isso). Trate o 409 do POST (CNPJ com dono) e o 403 do PATCH (membros só leem). Para quem ainda não tem organização, consulte `GET /cadastro/convite`. Copie o `src/api.ts`.
-
+Os `uv.lock` **não** foram incluídos de propósito: eles fixam o resolvido para Linux x86_64 com
+Python 3.9 e mais atrapalham do que ajudam em outra plataforma. Rode `uv sync` para resolver de
+novo a partir do `pyproject.toml`.

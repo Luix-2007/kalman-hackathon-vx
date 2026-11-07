@@ -1,0 +1,120 @@
+{
+  "Comment": "Atos do DOU: coleta direta da Imprensa Nacional -> Landing -> Bronze -> Prata -> Ouro",
+  "StartAt": "TemMesInformado",
+  "TimeoutSeconds": 21600,
+  "States": {
+    "TemMesInformado": {
+      "Type": "Choice",
+      "Choices": [{ "Variable": "$.ano", "IsPresent": true, "Next": "UsarMesInformado" }],
+      "Default": "UsarMesAtual"
+    },
+    "UsarMesInformado": {
+      "Type": "Pass",
+      "Parameters": {
+        "ano.$": "States.Format('{}', $.ano)",
+        "mes.$": "States.Format('{}', $.mes)",
+        "secao": "${Secao}"
+      },
+      "Next": "Landing"
+    },
+    "UsarMesAtual": {
+      "Type": "Pass",
+      "Comment": "Tira ano e mes do inicio da execucao. StringSplit quebra em cada caractere do delimitador, entao 2026-11-07T05:00:00Z vira [2026, 11, 07, 05:00:00Z].",
+      "Parameters": {
+        "ano.$": "States.ArrayGetItem(States.StringSplit($$.Execution.StartTime, '-T'), 0)",
+        "mes.$": "States.ArrayGetItem(States.StringSplit($$.Execution.StartTime, '-T'), 1)",
+        "secao": "${Secao}"
+      },
+      "Next": "Landing"
+    },
+    "Landing": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::glue:startJobRun.sync",
+      "Parameters": {
+        "JobName": "${GlueJobName}",
+        "Arguments": {
+          "--STAGE": "landing",
+          "--ANO.$": "$.ano",
+          "--MES.$": "$.mes",
+          "--SECAO.$": "$.secao"
+        }
+      },
+      "ResultPath": null,
+      "Retry": [{ "ErrorEquals": ["Glue.ConcurrentRunsExceededException", "Glue.AWSGlueException"],
+                  "IntervalSeconds": 30, "MaxAttempts": 6, "BackoffRate": 1.5 }],
+      "Catch": [{ "ErrorEquals": ["States.ALL"], "ResultPath": "$.erro", "Next": "AvisarFalha" }],
+      "Next": "Bronze"
+    },
+    "Bronze": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::glue:startJobRun.sync",
+      "Parameters": {
+        "JobName": "${GlueJobName}",
+        "Arguments": {
+          "--STAGE": "bronze",
+          "--ANO.$": "$.ano",
+          "--MES.$": "$.mes",
+          "--SECAO.$": "$.secao"
+        }
+      },
+      "ResultPath": null,
+      "Retry": [{ "ErrorEquals": ["Glue.ConcurrentRunsExceededException", "Glue.AWSGlueException"],
+                  "IntervalSeconds": 30, "MaxAttempts": 6, "BackoffRate": 1.5 }],
+      "Catch": [{ "ErrorEquals": ["States.ALL"], "ResultPath": "$.erro", "Next": "AvisarFalha" }],
+      "Next": "Prata"
+    },
+    "Prata": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::glue:startJobRun.sync",
+      "Parameters": {
+        "JobName": "${GlueJobName}",
+        "Arguments": {
+          "--STAGE": "prata",
+          "--ANO.$": "$.ano",
+          "--MES.$": "$.mes",
+          "--SECAO.$": "$.secao"
+        }
+      },
+      "ResultPath": null,
+      "Retry": [{ "ErrorEquals": ["Glue.ConcurrentRunsExceededException", "Glue.AWSGlueException"],
+                  "IntervalSeconds": 30, "MaxAttempts": 6, "BackoffRate": 1.5 }],
+      "Catch": [{ "ErrorEquals": ["States.ALL"], "ResultPath": "$.erro", "Next": "AvisarFalha" }],
+      "Next": "Ouro"
+    },
+    "Ouro": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::glue:startJobRun.sync",
+      "Parameters": {
+        "JobName": "${GlueJobName}",
+        "Arguments": {
+          "--STAGE": "ouro",
+          "--ANO.$": "$.ano",
+          "--MES.$": "$.mes",
+          "--SECAO.$": "$.secao"
+        }
+      },
+      "ResultPath": null,
+      "Retry": [{ "ErrorEquals": ["Glue.ConcurrentRunsExceededException", "Glue.AWSGlueException"],
+                  "IntervalSeconds": 30, "MaxAttempts": 6, "BackoffRate": 1.5 }],
+      "Catch": [{ "ErrorEquals": ["States.ALL"], "ResultPath": "$.erro", "Next": "AvisarFalha" }],
+      "Next": "Sucesso"
+    },
+    "Sucesso": { "Type": "Succeed" },
+    "AvisarFalha": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::sns:publish",
+      "Parameters": {
+        "TopicArn": "${AlertTopicArn}",
+        "Subject": "Pipeline atos do DOU falhou",
+        "Message.$": "States.Format('Execucao {} falhou: {}', $$.Execution.Id, States.JsonToString($.erro))"
+      },
+      "ResultPath": null,
+      "Next": "Falhou"
+    },
+    "Falhou": {
+      "Type": "Fail",
+      "Error": "PipelineDouFalhou",
+      "Cause": "Veja o estado AvisarFalha e os logs do job Glue"
+    }
+  }
+}

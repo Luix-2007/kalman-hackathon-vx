@@ -1,0 +1,628 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: 'Lakehouse da tabela usuarios-cnpj (stack cnpj-cadastro). Export do DynamoDB,
+  jobs Glue Python Shell com DuckDB, Landing/Bronze em Parquet, Silver/Gold em Iceberg.
+
+  '
+Parameters:
+  CadastroStackName:
+    Type: String
+    Default: cnpj-cadastro
+    Description: Stack do api/cnpj-cadastro, que exporta <stack>-TableArn
+  TableArn:
+    Type: String
+    Default: ''
+    Description: 'ARN da tabela DynamoDB, direto. Vazio = le o export <CadastroStackName>-TableArn.
+      Use isto enquanto o stack do cadastro ainda nao exporta o ARN.
+
+      '
+  KnowledgeBaseId:
+    Type: String
+    Default: ''
+    Description: Bedrock Knowledge Base a sincronizar no fim (vazio = pula a etapa)
+  DataSourceId:
+    Type: String
+    Default: ''
+  AlertEmail:
+    Type: String
+    Default: ''
+    Description: "E-mail que recebe aviso de falha (vazio = s\xF3 o t\xF3pico SNS)"
+  ArtifactsBucket:
+    Type: String
+    Default: ''
+    Description: 'Bucket onde o sam deploy coloca o etl.py, para o job poder baixar
+      o script. Vazio = assume o bucket padrao do SAM (aws-sam-cli-managed-default-samclisourcebucket-*),
+      que e o que o samconfig.toml usa com resolve_s3. Preencha se usar --s3-bucket.
+
+      '
+  Schedule:
+    Type: String
+    Default: cron(0 2 * * ? *)
+    Description: Quando rodar, no fuso America/Sao_Paulo
+Conditions:
+  HasAlertEmail:
+    Fn::Not:
+    - Fn::Equals:
+      - Ref: AlertEmail
+      - ''
+  HasTableArn:
+    Fn::Not:
+    - Fn::Equals:
+      - Ref: TableArn
+      - ''
+  HasArtifactsBucket:
+    Fn::Not:
+    - Fn::Equals:
+      - Ref: ArtifactsBucket
+      - ''
+Resources:
+  LakeBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+        - ServerSideEncryptionByDefault:
+            SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+        - Id: expira-landing
+          Status: Enabled
+          Prefix: landing/
+          ExpirationInDays: 90
+          NoncurrentVersionExpiration:
+            NoncurrentDays: 7
+        - Id: expira-resultados-do-athena
+          Status: Enabled
+          Prefix: athena-results/
+          ExpirationInDays: 7
+          NoncurrentVersionExpiration:
+            NoncurrentDays: 1
+        - Id: limpa-versoes-antigas
+          Status: Enabled
+          NoncurrentVersionExpiration:
+            NoncurrentDays: 30
+    Metadata:
+      SamResourceId: LakeBucket
+  ExportBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+        - ServerSideEncryptionByDefault:
+            SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+        - Id: expira-exports
+          Status: Enabled
+          ExpirationInDays: 7
+    Metadata:
+      SamResourceId: ExportBucket
+  LandingDb:
+    Type: AWS::Glue::Database
+    Properties:
+      CatalogId:
+        Ref: AWS::AccountId
+      DatabaseInput:
+        Name: landing_db
+        Description: Export cru do DynamoDB em Parquet
+    Metadata:
+      SamResourceId: LandingDb
+  BronzeDb:
+    Type: AWS::Glue::Database
+    Properties:
+      CatalogId:
+        Ref: AWS::AccountId
+      DatabaseInput:
+        Name: bronze_db
+        Description: Dados tipados em Parquet
+    Metadata:
+      SamResourceId: BronzeDb
+  SilverDb:
+    Type: AWS::Glue::Database
+    Properties:
+      CatalogId:
+        Ref: AWS::AccountId
+      DatabaseInput:
+        Name: silver_db
+        Description: Iceberg - estado atual por user_id
+    Metadata:
+      SamResourceId: SilverDb
+  GoldDb:
+    Type: AWS::Glue::Database
+    Properties:
+      CatalogId:
+        Ref: AWS::AccountId
+      DatabaseInput:
+        Name: gold_db
+        Description: "Iceberg - tabelas de neg\xF3cio"
+    Metadata:
+      SamResourceId: GoldDb
+  LandingUsuariosTable:
+    Type: AWS::Glue::Table
+    Properties:
+      CatalogId:
+        Ref: AWS::AccountId
+      DatabaseName:
+        Ref: LandingDb
+      TableInput:
+        Name: usuarios_cnpj
+        TableType: EXTERNAL_TABLE
+        Parameters:
+          classification: parquet
+          projection.enabled: 'true'
+          projection.dt.type: date
+          projection.dt.format: yyyy-MM-dd
+          projection.dt.range: 2026-01-01,NOW
+          projection.dt.interval: '1'
+          projection.dt.interval.unit: DAYS
+          storage.location.template:
+            Fn::Sub: s3://${LakeBucket}/landing/usuarios_cnpj/dt=${!dt}
+        PartitionKeys:
+        - Name: dt
+          Type: string
+        StorageDescriptor:
+          Location:
+            Fn::Sub: s3://${LakeBucket}/landing/usuarios_cnpj/
+          InputFormat: org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat
+          OutputFormat: org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat
+          SerdeInfo:
+            SerializationLibrary: org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe
+          Columns:
+          - Name: item
+            Type: string
+            Comment: item do DynamoDB em DynamoDB JSON
+          - Name: _ingested_at
+            Type: timestamp
+          - Name: _source
+            Type: string
+    Metadata:
+      SamResourceId: LandingUsuariosTable
+  BronzeUsuariosTable:
+    Type: AWS::Glue::Table
+    Properties:
+      CatalogId:
+        Ref: AWS::AccountId
+      DatabaseName:
+        Ref: BronzeDb
+      TableInput:
+        Name: usuarios_cnpj
+        TableType: EXTERNAL_TABLE
+        Parameters:
+          classification: parquet
+          projection.enabled: 'true'
+          projection.dt.type: date
+          projection.dt.format: yyyy-MM-dd
+          projection.dt.range: 2026-01-01,NOW
+          projection.dt.interval: '1'
+          projection.dt.interval.unit: DAYS
+          storage.location.template:
+            Fn::Sub: s3://${LakeBucket}/bronze/usuarios_cnpj/dt=${!dt}
+        PartitionKeys:
+        - Name: dt
+          Type: string
+        StorageDescriptor:
+          Location:
+            Fn::Sub: s3://${LakeBucket}/bronze/usuarios_cnpj/
+          InputFormat: org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat
+          OutputFormat: org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat
+          SerdeInfo:
+            SerializationLibrary: org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe
+          Columns:
+          - Name: user_id
+            Type: string
+          - Name: cnpj
+            Type: string
+          - Name: status
+            Type: string
+          - Name: consultado_em
+            Type: timestamp
+          - Name: razao_social
+            Type: string
+          - Name: situacao_cadastral
+            Type: string
+          - Name: capital_social
+            Type: decimal(20,2)
+          - Name: qtd_socios
+            Type: int
+          - Name: empresa_raw
+            Type: string
+          - Name: _row_hash
+            Type: string
+          - Name: _ingested_at
+            Type: timestamp
+    Metadata:
+      SamResourceId: BronzeUsuariosTable
+  BronzeSociosTable:
+    Type: AWS::Glue::Table
+    Properties:
+      CatalogId:
+        Ref: AWS::AccountId
+      DatabaseName:
+        Ref: BronzeDb
+      TableInput:
+        Name: socios
+        TableType: EXTERNAL_TABLE
+        Parameters:
+          classification: parquet
+          projection.enabled: 'true'
+          projection.dt.type: date
+          projection.dt.format: yyyy-MM-dd
+          projection.dt.range: 2026-01-01,NOW
+          projection.dt.interval: '1'
+          projection.dt.interval.unit: DAYS
+          storage.location.template:
+            Fn::Sub: s3://${LakeBucket}/bronze/socios/dt=${!dt}
+        PartitionKeys:
+        - Name: dt
+          Type: string
+        StorageDescriptor:
+          Location:
+            Fn::Sub: s3://${LakeBucket}/bronze/socios/
+          InputFormat: org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat
+          OutputFormat: org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat
+          SerdeInfo:
+            SerializationLibrary: org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe
+          Columns:
+          - Name: user_id
+            Type: string
+          - Name: cnpj
+            Type: string
+          - Name: nome_socio
+            Type: string
+            Comment: dado pessoal
+          - Name: socio_raw
+            Type: string
+    Metadata:
+      SamResourceId: BronzeSociosTable
+  EtlJobRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: glue.amazonaws.com
+          Action: sts:AssumeRole
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole
+      Policies:
+      - PolicyName: lakehouse
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: LerExport
+            Effect: Allow
+            Action:
+            - s3:GetObject
+            - s3:ListBucket
+            Resource:
+            - Fn::GetAtt:
+              - ExportBucket
+              - Arn
+            - Fn::Sub: ${ExportBucket.Arn}/*
+          - Sid: LerScriptDoJob
+            Effect: Allow
+            Action:
+            - s3:GetObject
+            - s3:ListBucket
+            Resource:
+              Fn::If:
+              - HasArtifactsBucket
+              - - Fn::Sub: arn:${AWS::Partition}:s3:::${ArtifactsBucket}
+                - Fn::Sub: arn:${AWS::Partition}:s3:::${ArtifactsBucket}/*
+              - - Fn::Sub: arn:${AWS::Partition}:s3:::aws-sam-cli-managed-default-samclisourcebucket-*
+                - Fn::Sub: arn:${AWS::Partition}:s3:::aws-sam-cli-managed-default-samclisourcebucket-*/*
+          - Sid: LerEGravarLake
+            Effect: Allow
+            Action:
+            - s3:GetObject
+            - s3:PutObject
+            - s3:DeleteObject
+            - s3:ListBucket
+            - s3:GetBucketLocation
+            Resource:
+            - Fn::GetAtt:
+              - LakeBucket
+              - Arn
+            - Fn::Sub: ${LakeBucket.Arn}/*
+          - Sid: DescobrirPastaDoExport
+            Effect: Allow
+            Action: dynamodb:DescribeExport
+            Resource:
+            - Fn::Sub:
+              - ${Arn}/export/*
+              - Arn:
+                  Fn::If:
+                  - HasTableArn
+                  - Ref: TableArn
+                  - Fn::ImportValue:
+                      Fn::Sub: ${CadastroStackName}-TableArn
+          - Sid: CatalogoIceberg
+            Effect: Allow
+            Action:
+            - glue:GetDatabase
+            - glue:GetDatabases
+            - glue:GetTable
+            - glue:GetTables
+            - glue:CreateTable
+            - glue:UpdateTable
+            Resource:
+            - Fn::Sub: arn:aws:glue:${AWS::Region}:${AWS::AccountId}:catalog
+            - Fn::Sub: arn:aws:glue:${AWS::Region}:${AWS::AccountId}:database/*
+            - Fn::Sub: arn:aws:glue:${AWS::Region}:${AWS::AccountId}:table/silver_db/*
+            - Fn::Sub: arn:aws:glue:${AWS::Region}:${AWS::AccountId}:table/gold_db/*
+    Metadata:
+      SamResourceId: EtlJobRole
+  EtlJob:
+    Type: AWS::Glue::Job
+    Properties:
+      Description: Lakehouse usuarios-cnpj com DuckDB (etapa escolhida por --STAGE)
+      Role:
+        Fn::GetAtt:
+        - EtlJobRole
+        - Arn
+      GlueVersion: '3.0'
+      Command:
+        Name: pythonshell
+        PythonVersion: '3.9'
+        ScriptLocation: s3://aws-sam-cli-managed-default-samclisourcebucket-u7efzhrdwxou/lakehouse-pipeline/d9fba9c9b996eb02d097e833be14fa2b
+      MaxCapacity: 1
+      MaxRetries: 0
+      Timeout: 60
+      ExecutionProperty:
+        MaxConcurrentRuns: 1
+      DefaultArguments:
+        --LAKE_URI:
+          Fn::Sub: s3://${LakeBucket}
+        --REGION:
+          Ref: AWS::Region
+        --additional-python-modules: duckdb==1.2.2,pyiceberg[glue]==0.9.1,pyiceberg[pyarrow]==0.9.1
+    Metadata:
+      SamResourceId: EtlJob
+  AthenaWorkGroup:
+    Type: AWS::Athena::WorkGroup
+    Properties:
+      Name:
+        Fn::Sub: ${AWS::StackName}-lakehouse
+      Description: Consulta as camadas do lakehouse (Bronze em Parquet, Silver e Gold
+        em Iceberg)
+      State: ENABLED
+      RecursiveDeleteOption: true
+      WorkGroupConfiguration:
+        EnforceWorkGroupConfiguration: true
+        PublishCloudWatchMetricsEnabled: true
+        EngineVersion:
+          SelectedEngineVersion: Athena engine version 3
+        ResultConfiguration:
+          OutputLocation:
+            Fn::Sub: s3://${LakeBucket}/athena-results/
+          EncryptionConfiguration:
+            EncryptionOption: SSE_S3
+    Metadata:
+      SamResourceId: AthenaWorkGroup
+  AcessoLeituraGoldPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      Description: Consultar Silver e Gold do lakehouse pelo Athena (somente leitura)
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Sid: RodarConsultaNoWorkgroup
+          Effect: Allow
+          Action:
+          - athena:StartQueryExecution
+          - athena:StopQueryExecution
+          - athena:GetQueryExecution
+          - athena:GetQueryResults
+          - athena:GetQueryResultsStream
+          - athena:GetWorkGroup
+          Resource:
+            Fn::Sub: arn:${AWS::Partition}:athena:${AWS::Region}:${AWS::AccountId}:workgroup/${AthenaWorkGroup}
+        - Sid: ListarCatalogoNoAthena
+          Effect: Allow
+          Action:
+          - athena:ListWorkGroups
+          - athena:ListDataCatalogs
+          - athena:GetDataCatalog
+          - athena:ListDatabases
+          - athena:GetDatabase
+          - athena:ListTableMetadata
+          - athena:GetTableMetadata
+          Resource: '*'
+        - Sid: LerCatalogoGlue
+          Effect: Allow
+          Action:
+          - glue:GetDatabase
+          - glue:GetDatabases
+          - glue:GetTable
+          - glue:GetTables
+          - glue:GetPartition
+          - glue:GetPartitions
+          Resource:
+          - Fn::Sub: arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:catalog
+          - Fn::Sub: arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:database/silver_db
+          - Fn::Sub: arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:database/gold_db
+          - Fn::Sub: arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:table/silver_db/*
+          - Fn::Sub: arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:table/gold_db/*
+        - Sid: ListarSomenteOsPrefixosPermitidos
+          Effect: Allow
+          Action: s3:ListBucket
+          Resource:
+            Fn::GetAtt:
+            - LakeBucket
+            - Arn
+          Condition:
+            StringLike:
+              s3:prefix:
+              - gold/*
+              - silver/*
+              - athena-results/*
+        - Sid: LerDadosDaSilverEGold
+          Effect: Allow
+          Action: s3:GetObject
+          Resource:
+          - Fn::Sub: ${LakeBucket.Arn}/gold/*
+          - Fn::Sub: ${LakeBucket.Arn}/silver/*
+        - Sid: GravarELerOProprioResultado
+          Effect: Allow
+          Action:
+          - s3:GetObject
+          - s3:PutObject
+          - s3:AbortMultipartUpload
+          Resource:
+            Fn::Sub: ${LakeBucket.Arn}/athena-results/*
+        - Sid: SaberOndeFicaOBucket
+          Effect: Allow
+          Action: s3:GetBucketLocation
+          Resource:
+            Fn::GetAtt:
+            - LakeBucket
+            - Arn
+    Metadata:
+      SamResourceId: AcessoLeituraGoldPolicy
+  AlertTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      DisplayName: Pipeline usuarios-cnpj
+    Metadata:
+      SamResourceId: AlertTopic
+  AlertEmailSubscription:
+    Type: AWS::SNS::Subscription
+    Condition: HasAlertEmail
+    Properties:
+      TopicArn:
+        Ref: AlertTopic
+      Protocol: email
+      Endpoint:
+        Ref: AlertEmail
+    Metadata:
+      SamResourceId: AlertEmailSubscription
+  PipelineStateMachine:
+    Type: AWS::Serverless::StateMachine
+    Properties:
+      Type: STANDARD
+      DefinitionUri:
+        Bucket: aws-sam-cli-managed-default-samclisourcebucket-u7efzhrdwxou
+        Key: lakehouse-pipeline/dd2f33cda719259766954cc9b49e2604
+      DefinitionSubstitutions:
+        TableArn:
+          Fn::If:
+          - HasTableArn
+          - Ref: TableArn
+          - Fn::ImportValue:
+              Fn::Sub: ${CadastroStackName}-TableArn
+        ExportBucket:
+          Ref: ExportBucket
+        GlueJobName:
+          Ref: EtlJob
+        AlertTopicArn:
+          Ref: AlertTopic
+        KnowledgeBaseId:
+          Ref: KnowledgeBaseId
+        DataSourceId:
+          Ref: DataSourceId
+      Policies:
+      - Statement:
+        - Sid: Exportar
+          Effect: Allow
+          Action: dynamodb:ExportTableToPointInTime
+          Resource:
+            Fn::If:
+            - HasTableArn
+            - Ref: TableArn
+            - Fn::ImportValue:
+                Fn::Sub: ${CadastroStackName}-TableArn
+        - Sid: AcompanharExport
+          Effect: Allow
+          Action: dynamodb:DescribeExport
+          Resource:
+          - Fn::Sub:
+            - ${Arn}/export/*
+            - Arn:
+                Fn::If:
+                - HasTableArn
+                - Ref: TableArn
+                - Fn::ImportValue:
+                    Fn::Sub: ${CadastroStackName}-TableArn
+        - Sid: ExportGravaNoBucket
+          Effect: Allow
+          Action:
+          - s3:PutObject
+          - s3:AbortMultipartUpload
+          - s3:PutObjectAcl
+          Resource:
+            Fn::Sub: ${ExportBucket.Arn}/*
+        - Sid: RodarJobGlue
+          Effect: Allow
+          Action:
+          - glue:StartJobRun
+          - glue:GetJobRun
+          - glue:GetJobRuns
+          - glue:BatchStopJobRun
+          Resource:
+            Fn::Sub: arn:aws:glue:${AWS::Region}:${AWS::AccountId}:job/${EtlJob}
+        - Sid: SincronizarKB
+          Effect: Allow
+          Action: bedrock:StartIngestionJob
+          Resource:
+            Fn::Sub: arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:knowledge-base/*
+        - Sid: Avisar
+          Effect: Allow
+          Action: sns:Publish
+          Resource:
+            Ref: AlertTopic
+      Events:
+        TodoDia:
+          Type: ScheduleV2
+          Properties:
+            ScheduleExpression:
+              Ref: Schedule
+            ScheduleExpressionTimezone: America/Sao_Paulo
+            Input: '{}'
+    Metadata:
+      SamResourceId: PipelineStateMachine
+Outputs:
+  LakeBucketName:
+    Value:
+      Ref: LakeBucket
+  AthenaWorkGroupName:
+    Description: Workgroup a usar no Athena (ja tem local de resultados configurado)
+    Value:
+      Ref: AthenaWorkGroup
+  AcessoLeituraGoldPolicyArn:
+    Description: Anexe a um usuario ou role para dar leitura na Silver e na Gold pelo
+      Athena
+    Value:
+      Ref: AcessoLeituraGoldPolicy
+  KbDocsUri:
+    Description: Fonte S3 da Bedrock Knowledge Base (parte ia/)
+    Value:
+      Fn::Sub: s3://${LakeBucket}/kb_docs/
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-KbDocsUri
+  StateMachineArn:
+    Value:
+      Ref: PipelineStateMachine
+  GlueJobName:
+    Value:
+      Ref: EtlJob
+  AlertTopicArn:
+    Value:
+      Ref: AlertTopic
+

@@ -1,0 +1,22 @@
+[project]
+name = "lakehouse-dou"
+version = "0.1.0"
+description = "Lakehouse dos atos do DOU: coleta direta da Imprensa Nacional, DuckDB e Iceberg em jobs Glue Python Shell"
+# O Glue Python Shell roda Python 3.9: manter compatibilidade e as mesmas versoes do template.yaml
+requires-python = ">=3.9"
+dependencies = [
+    "duckdb==1.2.2",
+    "pyiceberg[glue,pyarrow]==0.9.1",
+]
+
+[dependency-groups]
+dev = [
+    "boto3",
+    "cfn-lint",
+    "pyiceberg[sql-sqlite]==0.9.1",
+    "pytest",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = ["ignore::DeprecationWarning"]
