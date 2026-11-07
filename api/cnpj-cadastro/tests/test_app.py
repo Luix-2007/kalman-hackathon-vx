@@ -7,9 +7,6 @@ import threading
 
 import boto3
 import pytest
-from moto import mock_aws
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 RESPONSES = {
     "00000000000191": (200, {"cnpj": "00000000000191", "razao_social": "BANCO DO BRASIL SA",
@@ -35,21 +32,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
 
 @pytest.fixture
-def app(monkeypatch):
+def app(tabela, monkeypatch):
     srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     for k in ("HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"):
         monkeypatch.delenv(k, raising=False)
-    monkeypatch.setenv("AWS_DEFAULT_REGION", "us-east-1")
-    monkeypatch.setenv("TABLE_NAME", "t")
     monkeypatch.setenv("OPENCNPJ_API_URL", f"http://127.0.0.1:{srv.server_address[1]}")
-    with mock_aws():
-        boto3.client("dynamodb").create_table(
-            TableName="t", BillingMode="PAY_PER_REQUEST",
-            AttributeDefinitions=[{"AttributeName": "user_id", "AttributeType": "S"}],
-            KeySchema=[{"AttributeName": "user_id", "KeyType": "HASH"}])
-        import app as module
-        yield importlib.reload(module)
+    import app as module
+    yield importlib.reload(module)
     srv.shutdown()
 
 
@@ -57,35 +47,59 @@ def item(uid):
     return boto3.resource("dynamodb").Table("t").get_item(Key={"user_id": uid}).get("Item")
 
 
-def ev(uid, cnpj):
+def org(cnpj):
+    return item(f"CNPJ#{cnpj}")
+
+
+def vincular(uid, cnpj):
+    """Simula o POST /cadastro, que cria a organização (com o dono) antes do evento."""
+    boto3.resource("dynamodb").Table("t").put_item(Item={
+        "user_id": f"CNPJ#{cnpj}", "cnpj": cnpj, "dono": uid, "status": "processando",
+        "dados": {}, "membros": {}, "convites": {}})
+
+
+def ev(uid, cnpj, vinculado=True):
+    if vinculado:
+        vincular(uid, "".join(c for c in cnpj if c.isalnum()))  # o POST grava sem máscara
     return {"source": "app.usuarios", "detail-type": "UsuarioCadastrado", "detail": {"user_id": uid, "cnpj": cnpj}}
 
 
 def test_ativa(app):
     assert app.handler(ev("u1", "00.000.000/0001-91"))["status"] == "ativa"
-    i = item("u1")
-    assert i["cnpj"] == "00000000000191" and i["empresa"]["razao_social"] == "BANCO DO BRASIL SA"
+    o = org("00000000000191")
+    assert o["status"] == "ativa" and o["empresa"]["razao_social"] == "BANCO DO BRASIL SA"
+    assert o["dono"] == "u1" and o["membros"] == {}  # o resto da organização fica intacto
 
 
-def test_inativa_nao_encontrado_invalido(app):
+def test_inativa_nao_encontrado(app):
     assert app.handler(ev("u2", "11111111000111"))["status"] == "inativa"
     assert app.handler(ev("u3", "99999999000199"))["status"] == "nao_encontrado"
-    assert app.handler(ev("u4", "123"))["status"] == "cnpj_invalido"
-    assert "empresa" not in item("u3")
+    assert "empresa" not in org("99999999000199")
+
+
+def test_evento_sem_organizacao_ou_invalido_e_ignorado(app):
+    assert app.handler(ev("u4", "00000000000191", vinculado=False))["status"] == "ignorado"
+    assert app.handler(ev("u4", "123", vinculado=False))["status"] == "ignorado"
+    assert org("00000000000191") is None  # não cria a organização
+
+
+def test_evento_de_quem_nao_e_dono_e_ignorado(app):
+    vincular("dono", "00000000000191")  # ex.: o usuário trocou de CNPJ e outra pessoa pegou este
+    assert app.handler(ev("antigo", "00000000000191", vinculado=False))["status"] == "ignorado"
+    o = org("00000000000191")
+    assert o["dono"] == "dono" and o["status"] == "processando" and "empresa" not in o
 
 
 def test_429_falha_para_retry(app):
     with pytest.raises(app.RetryableError):
         app.handler(ev("u5", "22222222000122"))
-    assert item("u5") is None
+    assert org("22222222000122")["status"] == "processando"
 
 
 def test_nova_consulta_preserva_dados_do_formulario(app):
     app.handler(ev("u6", "00000000000191"))
     boto3.resource("dynamodb").Table("t").update_item(
-        Key={"user_id": "u6"}, UpdateExpression="SET dados = :d",
+        Key={"user_id": "CNPJ#00000000000191"}, UpdateExpression="SET dados = :d",
         ExpressionAttributeValues={":d": {"telefone": "1199"}})
-    app.handler(ev("u6", "99999999000199"))  # usuário reenviou outro CNPJ
-    i = item("u6")
-    assert i["dados"] == {"telefone": "1199"}
-    assert i["status"] == "nao_encontrado" and "empresa" not in i  # dados antigos da empresa saem
+    assert app.handler(ev("u6", "00000000000191", vinculado=False))["status"] == "ativa"  # reconsulta
+    assert org("00000000000191")["dados"] == {"telefone": "1199"}

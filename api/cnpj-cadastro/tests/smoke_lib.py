@@ -3,7 +3,7 @@ Código comum dos smoke tests (rodam contra a stack JÁ PUBLICADA na AWS).
 
 Os usuários de teste são criados direto no Cognito com credenciais IAM
 (admin_create_user, sem enviar e-mail) e apagados no final, junto com os
-itens que eles criaram no DynamoDB.
+itens que eles criaram no DynamoDB (organização "CNPJ#<cnpj>" e convites).
 """
 
 import json
@@ -43,7 +43,12 @@ class Smoke:
     def cleanup(self):
         for user in self._users:
             try:
+                item = self.table.get_item(Key={"user_id": user.sub}, ConsistentRead=True).get("Item") or {}
+                if item.get("papel") == "dono":  # apaga a organização (libera o CNPJ)
+                    self.table.delete_item(Key={"user_id": f"CNPJ#{item['cnpj']}"},
+                                           ConditionExpression="dono = :u", ExpressionAttributeValues={":u": user.sub})
                 self.table.delete_item(Key={"user_id": user.sub})
+                self.table.delete_item(Key={"user_id": f"CONVITE#{user.email}"})
                 self.cognito.admin_delete_user(UserPoolId=self.pool_id, Username=user.email)
             except Exception as exc:  # não esconde o resultado dos testes por causa da limpeza
                 print(f"  ⚠️  falha ao limpar {user.email}: {exc}")
