@@ -7,7 +7,8 @@ s3_prefix = "cnpj-cadastro"
 region = "us-east-1"
 confirm_changeset = true
 capabilities = "CAPABILITY_IAM"
-parameter_overrides = "EventSource=\"app.usuarios\" EventDetailType=\"UsuarioCadastrado\""
+# stack do hackathon: liga a empresa de teste KALMANTESTE100 (src/fixtures/)
+parameter_overrides = "EventSource=\"app.usuarios\" EventDetailType=\"UsuarioCadastrado\" FixturesEnabled=\"true\""
 image_repositories = []
 
 [default.global.parameters]

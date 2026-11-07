@@ -17,12 +17,16 @@ RESPONSES = {
 }
 
 
+CHAMADAS: list[str] = []  # CNPJs pedidos ao OpenCNPJ falso
+
+
 class Handler(http.server.BaseHTTPRequestHandler):
     def log_message(self, *a):
         pass
 
     def do_GET(self):
         cnpj = self.path.strip("/").split("?")[0]
+        CHAMADAS.append(cnpj)
         code, body = RESPONSES.get(cnpj, (404, {"error": "not found"}))
         data = json.dumps(body).encode()
         self.send_response(code)
@@ -38,6 +42,8 @@ def app(tabela, monkeypatch):
     for k in ("HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"):
         monkeypatch.delenv(k, raising=False)
     monkeypatch.setenv("OPENCNPJ_API_URL", f"http://127.0.0.1:{srv.server_address[1]}")
+    monkeypatch.delenv("FIXTURES_ENABLED", raising=False)
+    CHAMADAS.clear()
     import app as module
     yield importlib.reload(module)
     srv.shutdown()
@@ -103,3 +109,41 @@ def test_nova_consulta_preserva_dados_do_formulario(app):
         ExpressionAttributeValues={":d": {"telefone": "1199"}})
     assert app.handler(ev("u6", "00000000000191", vinculado=False))["status"] == "ativa"  # reconsulta
     assert org("00000000000191")["dados"] == {"telefone": "1199"}
+
+
+# ---------------------------------------------------------------- empresa de teste (fixture)
+
+def test_fixture_ligada_le_arquivo_sem_chamar_opencnpj(app, monkeypatch):
+    monkeypatch.setenv("FIXTURES_ENABLED", "true")
+    assert app.handler(ev("u7", "KALMANTESTE100"))["status"] == "ativa"
+    o = org("KALMANTESTE100")
+    assert o["empresa"]["razao_social"] == "AURORA ENERGIA S.A."
+    assert o["empresa"]["cnae_principal"] == "3514000" and o["empresa"]["uf"] == "SP"
+    assert CHAMADAS == []
+
+
+def test_fixture_ligada_nao_afeta_cnpj_real(app, monkeypatch):
+    monkeypatch.setenv("FIXTURES_ENABLED", "true")
+    assert app.handler(ev("u8", "00000000000191"))["status"] == "ativa"
+    assert CHAMADAS == ["00000000000191"]
+
+
+def test_fixture_ligada_sem_arquivo_e_nao_encontrado(app, monkeypatch):
+    monkeypatch.setenv("FIXTURES_ENABLED", "true")
+    assert app.handler(ev("u9", "KALMANTESTE999"))["status"] == "nao_encontrado"
+    assert CHAMADAS == []
+
+
+def test_fixture_desligada_vai_ao_opencnpj(app):
+    assert app.handler(ev("u10", "KALMANTESTE100"))["status"] == "nao_encontrado"
+    assert CHAMADAS == ["KALMANTESTE100"]
+
+
+def test_fixture_reenviar_preserva_dados(app, monkeypatch):
+    monkeypatch.setenv("FIXTURES_ENABLED", "true")
+    app.handler(ev("u11", "KALMANTESTE100"))
+    boto3.resource("dynamodb").Table("t").update_item(
+        Key={"user_id": "CNPJ#KALMANTESTE100"}, UpdateExpression="SET dados = :d",
+        ExpressionAttributeValues={":d": {"nome_fantasia": "Aurora"}})
+    assert app.handler(ev("u11", "KALMANTESTE100", vinculado=False))["status"] == "ativa"
+    assert org("KALMANTESTE100")["dados"] == {"nome_fantasia": "Aurora"}
