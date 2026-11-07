@@ -35,7 +35,8 @@ import pyarrow as pa
 
 log = logging.getLogger("etl")
 
-STATUS_VALIDOS = ("ativa", "inativa", "nao_encontrado", "cnpj_invalido")
+# "processando": organização criada pelo POST /cadastro, consulta ainda não terminou
+STATUS_VALIDOS = ("ativa", "inativa", "nao_encontrado", "cnpj_invalido", "processando")
 
 SILVER_USUARIOS = "silver_db.usuarios_cnpj"
 SILVER_SOCIOS = "silver_db.socios"
@@ -167,6 +168,13 @@ def landing(con: duckdb.DuckDBPyConnection, export_data_uri: str, lake: str, dt:
     return n
 
 
+# Na tabela única do cadastro (api/cnpj-cadastro/src/dados.py) só a organização tem os
+# dados da empresa: o vínculo do usuário (<sub>, com `papel`) e o convite (CONVITE#<email>)
+# ficam de fora. Itens antigos, de antes das organizações, continuam entrando.
+SO_EMPRESAS = ("(item->'$.papel') IS NULL "
+               "AND NOT starts_with(coalesce((item->>'$.user_id.S'), ''), 'CONVITE#')")
+
+
 def bronze(con: duckdb.DuckDBPyConnection, lake: str, dt: str) -> Dict[str, int]:
     src = _q(landing_uri(lake, dt))
     out_u = bronze_uri(lake, "usuarios_cnpj", dt)
@@ -191,6 +199,7 @@ def bronze(con: duckdb.DuckDBPyConnection, lake: str, dt: str) -> Dict[str, int]
             md5(CAST(item AS VARCHAR))                            AS _row_hash,
             _ingested_at
           FROM read_parquet({src})
+          WHERE {SO_EMPRESAS}
         ) TO {_q(out_u)} (FORMAT parquet, COMPRESSION zstd)
     """)
     con.sql(f"""
@@ -201,6 +210,7 @@ def bronze(con: duckdb.DuckDBPyConnection, lake: str, dt: str) -> Dict[str, int]
                  CAST(socio->'$.M' AS VARCHAR)  AS socio_raw
           FROM read_parquet({src}),
                UNNEST(CAST(item->'$.empresa.M.QSA.L' AS JSON[])) AS t(socio)
+          WHERE {SO_EMPRESAS}
         ) TO {_q(out_s)} (FORMAT parquet, COMPRESSION zstd)
     """)
     n = {

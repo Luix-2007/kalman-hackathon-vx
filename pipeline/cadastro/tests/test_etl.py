@@ -174,3 +174,24 @@ def test_parse_args_formato_glue():
         etl.parse_args(["--STAGE", "bronze", "--LAKE_URI", "s3://lake", "--RUN_DATE", "07/11/2026"])
     with pytest.raises(SystemExit):
         etl.parse_args(["--STAGE", "landing", "--LAKE_URI", "s3://lake", "--RUN_DATE", "2026-11-07"])
+
+
+def test_modelo_de_organizacoes_le_so_o_item_da_empresa(amb):
+    """Tabela com organizações: vínculo do usuário, organização (CNPJ#) e convite."""
+    itens = [
+        {"user_id": "sub-dono", "cnpj": "00000000000191", "papel": "dono"},
+        {"user_id": "sub-membro", "cnpj": "00000000000191", "papel": "membro"},
+        {"user_id": "CNPJ#00000000000191", "cnpj": "00000000000191", "dono": "sub-dono",
+         "status": "ativa", "consultado_em": "2026-11-07T10:00:00+00:00", "empresa": BB,
+         "dados": {"setor": "financeiro"}, "membros": {"sub-membro": {"email": "m@x"}}, "convites": {}},
+        {"user_id": "CNPJ#33000167000101", "cnpj": "33000167000101", "dono": "outro",
+         "status": "processando", "dados": {}, "membros": {}, "convites": {}},
+        {"user_id": "CONVITE#x@a.com", "cnpj": "00000000000191", "convidado_por": "sub-dono",
+         "expira_em": 9999999999},
+    ]
+    n_landing, n_bronze, n_silver, n_gold = roda_dia(amb, DIA1, itens)
+    assert n_landing == 5 and n_bronze == {"usuarios_cnpj": 2, "socios": 2}
+    u = por_usuario(amb, etl.SILVER_USUARIOS)
+    assert set(u) == {"CNPJ#00000000000191", "CNPJ#33000167000101"}
+    assert u["CNPJ#00000000000191"]["razao_social"] == "BANCO DO BRASIL SA"
+    assert set(por_usuario(amb, etl.GOLD_EMPRESAS)) == {"CNPJ#00000000000191"}
