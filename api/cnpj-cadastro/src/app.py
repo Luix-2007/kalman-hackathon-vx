@@ -6,11 +6,15 @@ Gatilho: evento no EventBridge publicado pelo seu backend no cadastro:
     {
       "Source": "app.usuarios",
       "DetailType": "UsuarioCadastrado",
-      "Detail": "{\"user_id\": \"123\", \"cnpj\": \"00.000.000/0001-91\"}"
+      "Detail": "{\"user_id\": \"<sub>\", \"cnpj\": \"00000000000191\"}"
     }
 
 A Lambda consulta https://api.opencnpj.org/{cnpj}?datasets=receita e grava
-o resultado na tabela, com chave user_id.
+o resultado no item da organização (user_id = "CNPJ#<cnpj>", ver dados.py).
+
+O POST /cadastro (cadastro.py) já criou a organização. Esta Lambda só grava se o
+usuário do evento ainda é o dono desse CNPJ: um evento atrasado de um CNPJ trocado,
+ou um evento sem organização, é ignorado.
 """
 
 from __future__ import annotations
@@ -25,6 +29,9 @@ from datetime import datetime, timezone
 from decimal import Decimal
 
 import boto3
+from botocore.exceptions import ClientError
+
+from dados import org_key
 
 log = logging.getLogger()
 log.setLevel(os.environ.get("LOG_LEVEL", "INFO"))
@@ -66,19 +73,27 @@ def fetch_cnpj(cnpj: str) -> dict | None:
         raise RetryableError(str(exc)) from exc
 
 
-def _save(user_id: str, attrs: dict, remove: tuple[str, ...] = ()) -> None:
-    """Grava só os campos do CNPJ. Usa update_item (e não put_item) para não apagar
-    os campos que o usuário preencheu no formulário (`dados`)."""
-    names = {f"#{k}": k for k in (*attrs, *remove)}  # "status" é palavra reservada no DynamoDB
+def _save(cnpj: str, dono: str, attrs: dict, remove: tuple[str, ...] = ()) -> bool:
+    """Grava só os campos do CNPJ na organização, se `dono` ainda for o dono. Usa
+    update_item (e não put_item) para não apagar o formulário, os membros e os convites.
+    Devolve False se a organização não existe mais ou mudou de dono (evento ignorado)."""
+    names = {**{f"#{k}": k for k in (*attrs, *remove)}, "#dono": "dono"}  # "status" é palavra reservada
     expr = "SET " + ", ".join(f"#{k} = :{k}" for k in attrs)
     if remove:
         expr += " REMOVE " + ", ".join(f"#{k}" for k in remove)
-    _table.update_item(
-        Key={"user_id": user_id},
-        UpdateExpression=expr,
-        ExpressionAttributeNames=names,
-        ExpressionAttributeValues={f":{k}": v for k, v in attrs.items()},
-    )
+    try:
+        _table.update_item(
+            Key={"user_id": org_key(cnpj)},
+            UpdateExpression=expr,
+            ConditionExpression="#dono = :dono",
+            ExpressionAttributeNames=names,
+            ExpressionAttributeValues={**{f":{k}": v for k, v in attrs.items()}, ":dono": dono},
+        )
+    except ClientError as exc:
+        if exc.response["Error"]["Code"] == "ConditionalCheckFailedException":
+            return False
+        raise
+    return True
 
 
 def handler(event: dict, context=None) -> dict:
@@ -89,9 +104,8 @@ def handler(event: dict, context=None) -> dict:
     try:
         cnpj = normalize_cnpj(detail["cnpj"])
     except ValueError:
-        _save(user_id, {"cnpj": detail.get("cnpj"), "status": "cnpj_invalido", "consultado_em": now}, remove=("empresa",))
-        log.warning("user %s: CNPJ inválido %r", user_id, detail.get("cnpj"))
-        return {"user_id": user_id, "status": "cnpj_invalido"}
+        log.warning("user %s: evento com CNPJ inválido %r ignorado", user_id, detail.get("cnpj"))
+        return {"user_id": user_id, "status": "ignorado"}
 
     empresa = fetch_cnpj(cnpj)
     if empresa is None:
@@ -99,11 +113,11 @@ def handler(event: dict, context=None) -> dict:
     else:
         status = "ativa" if str(empresa.get("situacao_cadastral", "")).lower() == "ativa" else "inativa"
 
-    attrs = {"cnpj": cnpj, "status": status, "consultado_em": now}
+    attrs = {"status": status, "consultado_em": now}
     if empresa is not None:
         attrs["empresa"] = empresa
-        _save(user_id, attrs)
-    else:
-        _save(user_id, attrs, remove=("empresa",))
+    if not _save(cnpj, user_id, attrs, remove=() if empresa is not None else ("empresa",)):
+        log.warning("user %s não é dono do CNPJ %s, resultado ignorado", user_id, cnpj)
+        return {"user_id": user_id, "cnpj": cnpj, "status": "ignorado"}
     log.info("user %s: CNPJ %s -> %s", user_id, cnpj, status)
     return {"user_id": user_id, "cnpj": cnpj, "status": status}

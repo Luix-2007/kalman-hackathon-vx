@@ -55,6 +55,10 @@ Resources:
       EnableTokenRevocation: true
 
   # ---------- Dados ----------
+  # Tabela única (modelo completo em src/dados.py):
+  #   user_id = <sub>             a organização do usuário (cnpj, papel dono|membro)
+  #   user_id = CNPJ#<cnpj>       a organização: dono, dados do CNPJ, formulário, membros
+  #   user_id = CONVITE#<email>   convite pendente (apagado sozinho pelo TTL)
   UsuariosCnpjTable:
     Type: AWS::DynamoDB::Table
     DeletionPolicy: Retain
@@ -67,6 +71,9 @@ Resources:
       KeySchema:
         - AttributeName: user_id
           KeyType: HASH
+      TimeToLiveSpecification:     # convites vencidos somem sozinhos (até ~48h depois)
+        AttributeName: expira_em
+        Enabled: true
 
   FailedEventsQueue:   # eventos que falharam mesmo após as tentativas (para não perder cadastro)
     Type: AWS::SQS::Queue
@@ -89,13 +96,13 @@ Resources:
                 - !Ref UserPoolClient
       CorsConfiguration:
         AllowOrigins: !Ref AllowedOrigins
-        AllowMethods: [GET, POST, PATCH, OPTIONS]
+        AllowMethods: [GET, POST, PATCH, DELETE, OPTIONS]
         AllowHeaders: [content-type, authorization]
       DefaultRouteSettings:      # limita abuso do endpoint público
         ThrottlingBurstLimit: 20
         ThrottlingRateLimit: 10
 
-  # POST /cadastro: recebe o CNPJ e dispara a consulta em segundo plano
+  # POST /cadastro: vincula o CNPJ ao usuário e dispara a consulta em segundo plano
   CadastroFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -107,11 +114,19 @@ Resources:
       Timeout: 10
       Environment:
         Variables:
+          TABLE_NAME: !Ref UsuariosCnpjTable
+          USER_POOL_ID: !Ref UserPool
           EVENT_SOURCE: !Ref EventSource
           EVENT_DETAIL_TYPE: !Ref EventDetailType
       Policies:
         - EventBridgePutEventsPolicy:
             EventBusName: default
+        - DynamoDBCrudPolicy:      # transação: cria a organização e libera o CNPJ anterior
+            TableName: !Ref UsuariosCnpjTable
+        - Statement:               # lê o e-mail do dono no Cognito (o access token não traz)
+            - Effect: Allow
+              Action: cognito-idp:ListUsers
+              Resource: !GetAtt UserPool.Arn
       Events:
         Post:
           Type: HttpApi
@@ -152,6 +167,47 @@ Resources:
             Method: PATCH
             Path: /cadastro/me
 
+  # Membros da organização e convites (src/membros.py)
+  MembrosFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: membros.handler
+      Runtime: python3.13
+      Architectures: [arm64]
+      MemorySize: 256
+      Timeout: 10
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref UsuariosCnpjTable
+          USER_POOL_ID: !Ref UserPool
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref UsuariosCnpjTable
+        - Statement:               # e-mail do usuário, para achar o convite dele
+            - Effect: Allow
+              Action: cognito-idp:ListUsers
+              Resource: !GetAtt UserPool.Arn
+      Events:
+        ListarMembros:
+          Type: HttpApi
+          Properties: { ApiId: !Ref CadastroApi, Method: GET, Path: /cadastro/membros }
+        Convidar:
+          Type: HttpApi
+          Properties: { ApiId: !Ref CadastroApi, Method: POST, Path: /cadastro/membros }
+        RemoverMembro:
+          Type: HttpApi
+          Properties: { ApiId: !Ref CadastroApi, Method: DELETE, Path: "/cadastro/membros/{id}" }
+        VerConvite:
+          Type: HttpApi
+          Properties: { ApiId: !Ref CadastroApi, Method: GET, Path: /cadastro/convite }
+        AceitarConvite:
+          Type: HttpApi
+          Properties: { ApiId: !Ref CadastroApi, Method: POST, Path: /cadastro/convite }
+        RecusarConvite:
+          Type: HttpApi
+          Properties: { ApiId: !Ref CadastroApi, Method: DELETE, Path: /cadastro/convite }
+
   # Evento UsuarioCadastrado -> consulta o OpenCNPJ -> grava no DynamoDB
   CnpjLookupFunction:
     Type: AWS::Serverless::Function
@@ -186,7 +242,7 @@ Resources:
 
 Outputs:
   ApiUrl:
-    Description: "URL base para o front: POST {ApiUrl}, GET/PATCH {ApiUrl}/me"
+    Description: "URL base para o front: POST {ApiUrl}, GET/PATCH {ApiUrl}/me, {ApiUrl}/membros, {ApiUrl}/convite"
     Value: !Sub https://${CadastroApi}.execute-api.${AWS::Region}.amazonaws.com/cadastro
   UserPoolId:
     Description: Configuração do login no front (Amplify)
