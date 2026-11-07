@@ -4,7 +4,7 @@
 
 API_DIR := api
 
-API_TARGETS := install test smoke smoke-login seed-aurora build deploy clean
+API_TARGETS := install test smoke smoke-login seed-aurora integracao build deploy clean
 
 FRONT_DIR := front/cadastro-teste
 FRONT_TARGETS := install env dev build check clean
@@ -24,6 +24,7 @@ help:
 	@echo "  make api-smoke-login  testa login e autenticacao na stack publicada (AWS)"
 	@echo "  make api-smoke     fluxo completo na stack publicada (AWS)"
 	@echo "  make api-seed-aurora  cria a empresa de teste Aurora na stack publicada (AWS)"
+	@echo "  make api-integracao  cadastro -> lakehouse -> agente do chatbot (AWS, roda o pipeline)"
 	@echo "  make api-build     sam build"
 	@echo "  make api-deploy    sam build + sam deploy"
 	@echo "  make api-clean     remove .venv e caches"

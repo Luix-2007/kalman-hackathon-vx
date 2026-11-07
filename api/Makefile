@@ -3,7 +3,7 @@
 
 LAMBDAS := cnpj-cadastro matriz
 
-.PHONY: install test smoke smoke-login seed-aurora clean build deploy
+.PHONY: install test smoke smoke-login seed-aurora integracao clean build deploy
 
 install:
 	uv sync
@@ -23,6 +23,11 @@ smoke: install
 # Precisa de FixturesEnabled=true na stack. Opções: make seed-aurora ARGS="--senha '...'"
 seed-aurora: install
 	uv run python cnpj-cadastro/tests/seed_aurora.py $(ARGS)
+
+# Integracao cnpj-cadastro -> lakehouse -> chatbot (agent.py), contra a AWS. Roda o pipeline (~15 min).
+# Opcoes: make integracao ARGS="--com-llm" (precisa de MODEL_ID no ambiente)
+integracao:
+	uv run --group chatbot python chatbot/tests/integracao_cadastro.py $(ARGS)
 
 clean:
 	rm -rf .venv .pytest_cache

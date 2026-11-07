@@ -137,6 +137,37 @@ make matriz-test     # testes (o SQL roda num DuckDB no lugar do Athena)
 make matriz-deploy   # sam deploy; resolve User Pool, tabela, bucket e workgroup pelos outputs das stacks
 ```
 
+## api/chatbot
+
+Agente da Kalman (`agent.py`, Strands + Bedrock AgentCore). Responde só com dados do Athena (`gold_db`), sempre filtrando pelo `user_id` do payload.
+
+### Integração com o cnpj-cadastro
+
+O agente não chama a API do cadastro. O caminho do dado é:
+
+```
+API cnpj-cadastro ──> DynamoDB ──(pipeline do stack lakehouse-pipeline, todo dia às 2h)──> gold_db.empresas_clientes ──> agent.py (Athena)
+```
+
+O contrato é o `user_id`: o `sub` do Cognito que a API grava precisa chegar ao gold, onde o agente filtra `WHERE user_id = '<sub>'`. O pipeline (Step Functions + Glue) fica em `pipeline/cadastro/`.
+
+```bash
+make api-integracao                    # cadastro -> pipeline -> ferramentas do agente
+make api-integracao ARGS="--com-llm"   # também chama o modelo (precisa de MODEL_ID no ambiente)
+```
+
+O teste (`api/chatbot/tests/integracao_cadastro.py`) usa suas credenciais AWS e:
+
+1. pela API, cria um dono (A), um membro que aceitou o convite (B) e um usuário sem organização (C)
+2. dispara o pipeline do lakehouse e espera terminar (~15 min, por causa do export do DynamoDB)
+3. chama as ferramentas do agente com o `user_id` de cada um: A e B veem a empresa (mesmo CNPJ e razão social do `GET /cadastro/me`) e C não vê nada
+4. confere que o `invoke` recusa `user_id` fora do formato
+5. apaga os usuários, os itens do DynamoDB e as linhas deles no silver e no gold (o pipeline só faz upsert e nunca apaga)
+
+Se o pipeline falhar, o tópico de alerta dele recebe o aviso, como numa falha real.
+
+**Pendente (nov/2026):** o ETL já ignora os vínculos `<sub>` e os convites `CONVITE#...`, então a Silver não quebra mais. Mas ele ainda usa a chave do item como `user_id`, e o dado da empresa está no item da organização: no gold, o `user_id` vira `CNPJ#<cnpj>`, e o agente, que filtra pelo `sub`, não encontra nada. Até o ETL gerar uma linha por usuário (dono e membros, ligando `<sub>` -> `cnpj` -> `CNPJ#<cnpj>`) com o `sub` como `user_id`, o teste falha no passo 3.
+
 ## front/cadastro-teste
 
 Front de **teste** do fluxo completo: login no Cognito, envio do CNPJ, espera pela consulta, formulário pré-preenchido com os dados da Receita e organização (convidar, aceitar convite, remover membros). Foi feito com Vite, React, TypeScript e Amplify, a mesma base do Lovable. O arquivo `src/api.ts` é o cliente da API que serve de referência para o front definitivo.
