@@ -8,6 +8,7 @@ dependencies = []
 [dependency-groups]
 dev = [
     "boto3",
+    "duckdb",          # faz o papel do Athena nos testes da api/matriz
     "moto[dynamodb]",
     "pytest",
 ]

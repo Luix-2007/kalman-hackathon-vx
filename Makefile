@@ -14,7 +14,7 @@ PIPELINE_TARGETS := install test lint deploy clean \
 	cadastro-deploy cadastro-run cadastro-verify dou-deploy dou-run dou-verify \
 	matriz-deploy matriz-run matriz-verify matriz-fixture matriz-proposta-demo matriz-sync-regras
 
-.PHONY: help test $(addprefix api-,$(API_TARGETS)) $(addprefix front-,$(FRONT_TARGETS)) \
+.PHONY: help test matriz-test matriz-deploy $(addprefix api-,$(API_TARGETS)) $(addprefix front-,$(FRONT_TARGETS)) \
 	$(addprefix pipeline-,$(PIPELINE_TARGETS))
 
 help:
@@ -27,6 +27,8 @@ help:
 	@echo "  make api-build     sam build"
 	@echo "  make api-deploy    sam build + sam deploy"
 	@echo "  make api-clean     remove .venv e caches"
+	@echo "  make matriz-test   testes da API da matriz"
+	@echo "  make matriz-deploy  sam deploy da API da matriz (stack matriz-api)"
 	@echo "  make front-env     gera front/cadastro-teste/.env com os outputs da stack"
 	@echo "  make front-dev     sobe o front de teste em http://localhost:5173"
 	@echo "  make front-build   build de producao do front de teste"
@@ -51,3 +53,10 @@ $(addprefix pipeline-,$(PIPELINE_TARGETS)): pipeline-%:
 	$(MAKE) -C $(PIPELINE_DIR) $*
 
 test: api-test front-check pipeline-test
+
+# API da matriz (api/matriz): mesmo ambiente Python de api/
+matriz-test:
+	cd $(API_DIR) && uv sync && uv run pytest matriz/tests
+
+matriz-deploy:
+	$(MAKE) -C $(API_DIR)/matriz deploy
