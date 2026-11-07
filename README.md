@@ -28,6 +28,7 @@ make help          # lista os alvos
 make api-test      # uv sync + pytest (local: DynamoDB com moto, OpenCNPJ com servidor local)
 make api-smoke-login  # login + rotas recusam chamadas sem token (stack publicada, usa suas credenciais AWS)
 make api-smoke     # fluxo completo: CNPJ, formulário, isolamento, convite, membro, troca de CNPJ (stack publicada)
+make api-seed-aurora  # cria a empresa de teste Aurora (KALMANTESTE100) com perfil completo; os dados ficam
 make api-build     # sam build
 make api-deploy    # sam build + sam deploy (samconfig.toml: stack cnpj-cadastro, us-east-1)
 make api-clean     # remove .venv e caches
@@ -46,9 +47,23 @@ Todas exigem o header `Authorization: Bearer <access token do Cognito>`. Sem tok
 |---|---|---|
 | `POST /cadastro` | `{"cnpj": "00.000.000/0001-91"}` | **202** na hora: cria a organização do CNPJ com o usuário como dono, e a consulta roda em segundo plano (~3s). **409** se o CNPJ já tiver dono. **400** se o CNPJ for inválido. |
 | `GET /cadastro/me` | | **200** com `papel`, `cnpj`, `status`, `empresa` (sem sócios) e `dados` da organização. **404** se o usuário ainda não participa de uma. |
-| `PATCH /cadastro/me` | `{"dados": {"telefone": "1199...", "site": null}}` | **200** com o cadastro atualizado. Só o dono (**403** para membros). Faz merge campo a campo, e `null` apaga o campo. **404** se não houver organização. |
+| `PATCH /cadastro/me` | `{"dados": {"setor": "energia_eletrica", "ufs_atuacao": ["SP"], "email_alertas": null}}` | **200** com o cadastro atualizado. Só o dono (**403** para membros). Faz merge campo a campo (uma lista é trocada inteira), e `null` apaga o campo. **400** com `campos` se um campo não for do perfil ou tiver o tipo errado. **404** se não houver organização. |
 
-`status` pode ser `processando` (logo depois do POST), `ativa`, `inativa` ou `nao_encontrado`. Os campos de `dados` ainda são livres (snake_case). Depois de definir o formulário, liste-os em `CAMPOS_PERMITIDOS` em `src/usuario.py`.
+`status` pode ser `processando` (logo depois do POST), `ativa`, `inativa` ou `nao_encontrado`.
+
+`dados` guarda o **perfil regulatório**, que o filtro da matriz de obrigações usa junto com os dados da Receita em `empresa` (CNAEs, natureza jurídica, porte, UF). Os campos e as regras de cada um estão em `src/perfil.py`:
+
+| Campo | Tipo |
+|---|---|
+| `nome_fantasia`, `email_alertas`, `faixa_funcionarios`, `setor` | texto |
+| `ufs_atuacao` (siglas), `municipios_atuacao` (código IBGE), `orgaos_fiscalizadores`, `temas_interesse`, `temas_fora_escopo`, `certificacoes` | lista de textos |
+| `unidades` (`id`, `nome`, `tipo`, `tags`) | lista de objetos |
+| `outorgas` (`id`, `tipo`, `numero`, `orgao`, `objeto`, `unidade_id`, `validade` AAAA-MM-DD, `antecedencia_renovacao_dias`) | lista de objetos |
+| `areas` (`id`, `nome`, `responsavel`, `email`) | lista de objetos |
+
+Em cada lista de objetos o `id` é obrigatório e único.
+
+**Empresa de teste.** Com `FixturesEnabled=true` (só na stack do hackathon, ligado no `samconfig.toml`), CNPJs que começam com `KALMAN` vêm de `src/fixtures/` em vez do OpenCNPJ. `KALMANTESTE100` é a Aurora Energia S.A., distribuidora ativa em SP. `make api-seed-aurora` cria o usuário, envia o CNPJ e grava o perfil de `tests/aurora_dados.json`.
 
 ### Organizações: dono e membros
 
@@ -65,7 +80,7 @@ Cada CNPJ é uma **organização** com um único dono: quem enviou o CNPJ primei
 
 O convite não envia e-mail. O dono avisa a pessoa, ela cria a conta com o e-mail convidado e vê o convite ao entrar. O e-mail vem do Cognito, que só confirma a conta depois que a pessoa digita o código recebido. Por isso só quem tem acesso ao e-mail aceita o convite.
 
-O `PATCH /cadastro/me` responde **403** para membros. O dono só troca de CNPJ enquanto a organização não tem membros nem convites pendentes (senão **409**). O CNPJ anterior fica livre e o formulário vai junto. Um membro não cadastra CNPJ: precisa sair da organização antes.
+O `PATCH /cadastro/me` responde **403** para membros. O dono só troca de CNPJ enquanto a organização não tem membros, convites pendentes nem unidades, outorgas ou áreas no perfil (senão **409**): o perfil vai para o lake da matriz de obrigações chaveado pelo CNPJ. O CNPJ anterior fica livre e o formulário vai junto. Um membro não cadastra CNPJ: precisa sair da organização antes.
 
 Tudo fica na tabela única, com a chave `user_id` (detalhes em `src/dados.py`):
 
@@ -98,7 +113,7 @@ const auth = { Authorization: `Bearer ${tokens.accessToken}`, "Content-Type": "a
 
 await fetch(API_URL, { method: "POST", headers: auth, body: JSON.stringify({ cnpj }) });
 const cadastro = await (await fetch(`${API_URL}/me`, { headers: auth })).json();   // repita enquanto status for "processando"
-await fetch(`${API_URL}/me`, { method: "PATCH", headers: auth, body: JSON.stringify({ dados: { telefone } }) });
+await fetch(`${API_URL}/me`, { method: "PATCH", headers: auth, body: JSON.stringify({ dados: { setor } }) });
 ```
 
 O e-mail padrão do Cognito tem limite baixo de envios por dia. Antes de produção, configure o Amazon SES no User Pool.
@@ -113,7 +128,7 @@ make front-dev     # http://localhost:5173 (porta fixa: é a que está liberada 
 make front-check   # typecheck
 ```
 
-Os campos do formulário de teste ficam em `src/campos.ts`. Quando os campos reais forem definidos, troque essa lista e preencha `CAMPOS_PERMITIDOS` na API.
+Os campos do perfil ficam em `src/campos.ts`, espelhando `src/perfil.py` da API: texto, opções, listas como chips (UFs, órgãos, temas) e linhas repetíveis (unidades, outorgas, áreas).
 
 ### Front no Lovable: cuidados
 
