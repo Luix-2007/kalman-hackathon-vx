@@ -48,7 +48,12 @@ code { font-family: var(--k-fonte-mono); font-size: 0.9em; background: var(--k-c
 .acesso-arte { position: sticky; top: 0; height: 100svh; overflow: hidden; display: grid; grid-template-rows: auto 1fr auto;
   padding: clamp(1.5rem, 3vw, 2.5rem); background: var(--k-grafite); color: var(--k-sobre-grafite); }
 @media (max-width: 900px) { .acesso-arte { display: none; } }
-.acesso-marca { height: 2.1rem; width: auto; position: relative; z-index: 1; }
+.acesso-marca { height: 2.1rem; width: auto; display: block; }
+/* logo clicável: volta para a landing */
+.acesso-marca-link { justify-self: start; position: relative; z-index: 1; display: inline-block; border-radius: 8px;
+  transition: opacity var(--k-dur-ui) var(--k-ease-out); }
+@media (hover: hover) { .acesso-marca-link:hover { opacity: .8; } }
+.acesso-marca-link:focus-visible { outline: 3px solid rgb(255 90 31 / .55); outline-offset: 4px; }
 .motivo { position: absolute; left: 0; right: 0; top: 7rem; bottom: 15rem; width: 100%; height: calc(100% - 22rem); }
 .acesso-frase { grid-row: 3; position: relative; z-index: 1; }
 .acesso-titulo .laranja { color: var(--k-laranja); }
@@ -64,10 +69,12 @@ code { font-family: var(--k-fonte-mono); font-size: 0.9em; background: var(--k-c
   padding-block: clamp(1.25rem, 3vw, 2.5rem); padding-left: max(1.25rem, env(safe-area-inset-left, 0px)); padding-right: max(1.25rem, env(safe-area-inset-right, 0px)); }
 .acesso-topo-movel { display: none; }
 @media (max-width: 900px) { .acesso-topo-movel { display: block; } }
-.acesso-marca-movel { height: 1.9rem; width: auto; }
+.acesso-marca-movel { height: 1.9rem; width: auto; display: block; }
 .acesso-form { grid-row: 2; align-self: center; justify-self: center; width: min(24rem, 100%); display: grid; gap: 1.25rem; padding-block: 2rem; }
 .acesso-cabeca { display: grid; gap: .5rem; margin-bottom: .5rem; }
-.acesso-cabeca h1 { font-size: clamp(2rem, 3vw, 2.5rem); }
+/* título numa linha só (24rem de coluna): o tamanho cabe "Criar conta no Kalman" do celular ao PC */
+.acesso-cabeca h1 { font-size: clamp(1.6rem, 2.5vw, 2.1rem); white-space: nowrap; }
+.acesso-cabeca h1 .laranja { color: var(--k-laranja); }
 .acesso-cabeca p { color: var(--k-tinta-2); overflow-wrap: anywhere; }
 .acesso-cabeca strong { color: var(--k-grafite); font-weight: 600; }
 .acesso-troca { color: var(--k-tinta-2); font-size: var(--k-t-pequeno); text-align: center; }
@@ -153,15 +160,15 @@ code { font-family: var(--k-fonte-mono); font-size: 0.9em; background: var(--k-c
 .empresa-setor strong { color: var(--k-sobre-grafite); font-weight: 600; }
 .setor-ponto { width: .5rem; height: .5rem; border-radius: 50%; background: var(--k-ceu); flex: none; }
 
-.secoes { display: grid; }
-.secao { border: 0; margin: 0; padding: 1.75rem 0; border-top: 1px solid var(--k-linha); display: grid; grid-template-columns: 13rem minmax(0, 1fr); gap: 1rem 2rem; }
-.secao:first-child { border-top: 0; padding-top: 0; }
-@media (max-width: 700px) { .secao { grid-template-columns: minmax(0, 1fr); } }
-.secao-titulo h2 { font-size: 1.15rem; letter-spacing: -0.02em; line-height: 1.3; }
-.secao-titulo p { color: var(--k-tinta-3); font-size: var(--k-t-pequeno); margin-top: .2rem; }
-.secao-campos { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem 1.25rem; }
-@media (max-width: 520px) { .secao-campos { grid-template-columns: minmax(0, 1fr); } }
-.secao-campos .k-campo input { height: 2.9rem; font-size: 1rem; }
+.blocos { display: grid; }
+.bloco { border: 0; margin: 0; padding: 1.75rem 0; border-top: 1px solid var(--k-linha); display: grid; grid-template-columns: 13rem minmax(0, 1fr); gap: 1rem 2rem; }
+.bloco:first-child { border-top: 0; padding-top: 0; }
+@media (max-width: 700px) { .bloco { grid-template-columns: minmax(0, 1fr); } }
+.bloco-titulo h2 { font-size: 1.15rem; letter-spacing: -0.02em; line-height: 1.3; }
+.bloco-titulo p { color: var(--k-tinta-3); font-size: var(--k-t-pequeno); margin-top: .2rem; }
+.bloco-campos { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem 1.25rem; }
+@media (max-width: 520px) { .bloco-campos { grid-template-columns: minmax(0, 1fr); } }
+.bloco-campos .k-campo input { height: 2.9rem; font-size: 1rem; }
 .c-email_contato { grid-column: 1 / -1; }
 
 .grade-endereco { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 1rem 1.25rem; }
@@ -232,3 +239,16 @@ code { font-family: var(--k-fonte-mono); font-size: 0.9em; background: var(--k-c
 .convidar-linha .k-btn { height: 3.25rem; }
 @media (max-width: 520px) { .convidar-linha { flex-direction: column; } }
 .convidar-nota { color: var(--k-tinta-3); font-size: .8rem; max-width: 52ch; }
+
+/* ══════════════ status do CNPJ (conta dos dígitos + Receita) ══════════════ */
+.cnpj-status { display: flex; align-items: center; gap: .45rem; min-height: 1.25rem; margin: 0; font-size: .82rem; line-height: 1.35; color: var(--k-tinta-3); }
+.cnpj-status:empty { display: none; }
+.cnpj-status strong { font-weight: 600; color: var(--k-grafite); }
+.cnpj-status--ok { color: var(--k-tinta-2); }
+.cnpj-status--ok::before { content: "✓"; flex: none; color: var(--k-grafite); font-weight: 600; }
+.cnpj-status--aviso { color: var(--k-tinta-2); }
+.cnpj-status--aviso::before { content: ""; flex: none; width: .45rem; height: .45rem; border-radius: 50%; background: var(--k-laranja); }
+.cnpj-status--erro { color: var(--k-erro); }
+.cnpj-status--centro { justify-content: center; text-align: center; }
+.cnpj-girando { flex: none; width: .8rem; height: .8rem; border-radius: 50%; border: 1.5px solid var(--k-ceu); border-top-color: var(--k-grafite); }
+@media (prefers-reduced-motion: no-preference) { .cnpj-girando { animation: girar .8s linear infinite; } }

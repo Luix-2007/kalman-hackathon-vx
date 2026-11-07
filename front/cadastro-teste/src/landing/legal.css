@@ -1,0 +1,23 @@
+/* Páginas legais (/privacidade e /termos). Escopadas em .legal, como a landing em .lp. */
+.legal {
+  --grafite: #0e1a24; --laranja: #ff5a1f; --ceu-claro: #eaf2f7; --tinta-2: #45525e; --tinta-3: #66727d; --linha: rgb(14 26 36 / .12); color-scheme: light;
+  margin: 0; background: #fff; color: var(--grafite); font: 400 1rem/1.7 "Instrument Sans", system-ui, sans-serif; -webkit-font-smoothing: antialiased;
+  min-height: 100%;
+
+.topo { border-bottom: 1px solid var(--linha); }
+.moldura { max-width: 46rem; margin-inline: auto; padding-left: max(1.25rem, env(safe-area-inset-left, 0px)); padding-right: max(1.25rem, env(safe-area-inset-right, 0px)); }
+.topo .moldura { max-width: 76rem; display: flex; justify-content: space-between; align-items: center; height: 4.25rem; }
+.marca { height: 1.9rem; width: auto; display: block; }
+.topo a.voltar { color: var(--tinta-2); text-decoration: none; font-size: .92rem; }
+main { padding-block: clamp(2.5rem, 6vw, 4.5rem) 5rem; }
+.rotulo { font: 500 .72rem/1.2 "IBM Plex Mono", monospace; letter-spacing: .08em; text-transform: uppercase; color: var(--tinta-3); }
+.rotulo::before { content: ""; display: inline-block; width: .45rem; height: .45rem; border-radius: 50%; background: var(--laranja); margin-right: .55rem; vertical-align: .08em; }
+h1 { font-size: clamp(2.2rem, 5vw, 3.2rem); line-height: 1.05; letter-spacing: -0.035em; margin: .9rem 0 .6rem; font-weight: 600; }
+.data { color: var(--tinta-3); font-size: .9rem; margin: 0 0 2.5rem; }
+h2 { font-size: 1.2rem; letter-spacing: -0.02em; margin: 2.25rem 0 .5rem; font-weight: 600; }
+p, li { color: var(--tinta-2); }
+ul { padding-left: 1.2rem; }
+a { color: var(--grafite); text-underline-offset: 3px; }
+.rodape { border-top: 1px solid var(--linha); padding-block: 1.5rem; font-size: .85rem; color: var(--tinta-3); }
+.rodape .moldura { max-width: 76rem; display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+}

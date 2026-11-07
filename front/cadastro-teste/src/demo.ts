@@ -1,11 +1,13 @@
 /**
  * Modo demonstração, só em desenvolvimento (npm run dev): dá para percorrer as telas sem Cognito e sem API.
  *
- *   http://localhost:5173/?demo           tela de entrar / criar conta (qualquer e-mail e senha; código: qualquer 6 dígitos)
- *   http://localhost:5173/?demo=vazio     já logado, antes do CNPJ (a consulta simulada leva 3 s)
- *   http://localhost:5173/?demo=dados     já logado como dono, com o CNPJ consultado, 1 membro e 1 convite
- *   http://localhost:5173/?demo=membro    já logado como membro (só leitura)
- *   http://localhost:5173/?demo=convite   já logado, sem empresa, com um convite pendente
+ *   http://localhost:5173/entrar?demo         entrar / criar conta (qualquer e-mail e senha; código: qualquer 6 dígitos)
+ *   http://localhost:5173/painel?demo=vazio   já logado, antes do CNPJ (a consulta simulada leva 3 s)
+ *   http://localhost:5173/painel?demo=dados   já logado como dono, com o CNPJ consultado, 1 membro e 1 convite
+ *   http://localhost:5173/painel?demo=membro  já logado como membro (só leitura)
+ *   http://localhost:5173/painel?demo=convite já logado, sem empresa, com um convite pendente
+ *
+ * O modo vale para a aba inteira a partir do primeiro carregamento com ?demo (navegar entre rotas não o desliga).
  *
  * O cadastro de exemplo é o da Ampla (Enel Distribuição Rio) que está no DynamoDB, com dados públicos da Receita.
  * No build de produção o modo não existe. Para tirá-lo do projeto: apague este arquivo e as referências a

@@ -8,10 +8,14 @@ import {
   signOut,
   signUp,
 } from "aws-amplify/auth";
-import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { startTransition, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { Link, Navigate, Route, Routes, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import * as apiReal from "./api";
+import Landing from "./landing/Landing";
+import { Privacidade, Termos } from "./landing/Legal";
 import { ApiError, type Cadastro, type Convite, type Membros } from "./api";
 import { CAMPOS } from "./campos";
+import { mascaraCnpj, soDigitos, useConferenciaCnpj, type ConferenciaCnpj } from "./cnpj";
 import { configured } from "./config";
 import { DEMO_EMAIL, demoApi, demoAtivo, demoAuth, demoLogado } from "./demo";
 import { Icone, Marca } from "./identidade/marca";
@@ -39,9 +43,6 @@ const auth = {
       : confirmResetPassword({ username: email, confirmationCode: codigo, newPassword: senha }),
   sair: (): Promise<void> => (demoAtivo ? Promise.resolve() : signOut()),
 };
-
-// Vindo da landing: ?criar abre "Criar conta" e ?cnpj= já preenche o CNPJ.
-const PARAMS = new URLSearchParams(location.search);
 
 // CNPJ informado ao criar a conta: fica guardado até o e-mail ser confirmado e a consulta sair.
 const CHAVE_CNPJ = "kalman:cnpj-da-conta";
@@ -82,27 +83,6 @@ function mensagemDeErro(err: unknown): string {
 }
 const statusDoErro = (err: unknown) => (err as { status?: number }).status;
 
-const soDigitos = (v: string) => v.replace(/\D/g, "");
-function mascaraCnpj(v: string) {
-  const d = soDigitos(v).slice(0, 14);
-  if (d.length <= 2) return d;
-  if (d.length <= 5) return `${d.slice(0, 2)}.${d.slice(2)}`;
-  if (d.length <= 8) return `${d.slice(0, 2)}.${d.slice(2, 5)}.${d.slice(5)}`;
-  if (d.length <= 12) return `${d.slice(0, 2)}.${d.slice(2, 5)}.${d.slice(5, 8)}/${d.slice(8)}`;
-  return `${d.slice(0, 2)}.${d.slice(2, 5)}.${d.slice(5, 8)}/${d.slice(8, 12)}-${d.slice(12)}`;
-}
-/** Dígitos verificadores do CNPJ numérico. */
-function cnpjValido(v: string) {
-  const d = soDigitos(v);
-  if (d.length !== 14 || /^(\d)\1+$/.test(d)) return false;
-  const dv = (base: string) => {
-    let soma = 0, peso = base.length - 7;
-    for (const c of base) { soma += +c * peso--; if (peso < 2) peso = 9; }
-    const r = soma % 11;
-    return r < 2 ? 0 : 11 - r;
-  };
-  return dv(d.slice(0, 12)) === +d[12] && dv(d.slice(0, 13)) === +d[13];
-}
 const emailValido = (v: string) => /^\S+@\S+\.\S+$/.test(v);
 const formatCnae = (c: string) => { const d = soDigitos(c); return d.length === 7 ? `${d.slice(0, 4)}-${d.slice(4, 5)}/${d.slice(5)}` : c; };
 const MINUSCULAS = new Set(["de", "da", "do", "das", "dos", "e"]);
@@ -136,10 +116,18 @@ const reguladorDoCnae = (cnae?: string) => {
   return d ? REGULADORES.filter(([p]) => d.startsWith(p)).sort((a, b) => b[0].length - a[0].length)[0]?.[1] ?? null : null;
 };
 
-// ─────────────────────────── app ───────────────────────────
+// ─────────────────────────── app: rotas ───────────────────────────
+//
+//   /                landing (pública)          /privacidade, /termos   páginas legais
+//   /entrar          entrar                     /criar-conta            criar conta (aceita ?cnpj=)
+//   /esqueci-senha   redefinir a senha          /painel                 área logada (sem sessão → /entrar)
+//
+// Confirmar o e-mail e criar a senha nova são etapas dentro de /criar-conta e /esqueci-senha (precisam do e-mail e da
+// senha digitados na etapa anterior, que não vão para a URL).
 
 export default function App() {
   const [email, setEmail] = useState<string | null | undefined>(demoLogado ? DEMO_EMAIL : demoAtivo ? null : undefined);
+  const navegar = useNavigate();
 
   useEffect(() => {
     if (!configured || demoAtivo) return;
@@ -159,32 +147,80 @@ export default function App() {
       </div>
     );
   }
-  if (email === undefined) return <div className="centro"><Carregando /></div>;
-  if (email === null) return <Acesso onEntrar={setEmail} />;
-  return <Painel email={email} onSair={() => auth.sair().then(() => (demoAtivo ? (location.href = "?demo") : setEmail(null)))} />;
+  const carregando = <div className="centro"><Carregando /></div>;
+  const entrou = (e: string) => { setEmail(e); navegar("/painel", { replace: true }); };
+  // O React Router 7 navega dentro de uma transição; o logout vai na mesma transição. Se fosse uma atualização urgente,
+  // o /painel renderizaria antes sem usuário e mandaria para /entrar.
+  const sair = () => auth.sair().then(() => startTransition(() => { navegar("/"); setEmail(null); }));
+  /** Telas de acesso: quem já está logado vai direto para o painel. */
+  const acesso = (modo: Modo) =>
+    email === undefined ? carregando : email ? <Navigate to="/painel" replace /> : <Acesso key={modo} modoInicial={modo} onEntrar={entrou} />;
+
+  return (
+    <>
+      <RolarAoTopo />
+      <Routes>
+        <Route path="/" element={<Inicio />} />
+        <Route path="/entrar" element={acesso("entrar")} />
+        <Route path="/criar-conta" element={acesso("criar")} />
+        <Route path="/esqueci-senha" element={acesso("esqueci")} />
+        <Route path="/painel" element={email === undefined ? carregando : email ? <Painel email={email} onSair={sair} /> : <Navigate to="/entrar" replace />} />
+        <Route path="/privacidade" element={<Privacidade />} />
+        <Route path="/termos" element={<Termos />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </>
+  );
+}
+
+/** "/": a landing. Links antigos (/?criar&cnpj=...) vão para /criar-conta. */
+function Inicio() {
+  const [params] = useSearchParams();
+  if (params.has("criar") || params.has("cnpj")) {
+    const cnpj = soDigitos(params.get("cnpj") ?? "");
+    return <Navigate to={cnpj ? `/criar-conta?cnpj=${cnpj}` : "/criar-conta"} replace />;
+  }
+  return <Landing />;
+}
+
+/** Ao trocar de rota, volta ao topo (menos quando o link aponta para uma âncora). */
+function RolarAoTopo() {
+  const { pathname, hash } = useLocation();
+  useEffect(() => { if (!hash) window.scrollTo(0, 0); }, [pathname, hash]);
+  return null;
 }
 
 // ─────────────────────────── acesso: entrar / criar conta / confirmar / redefinir senha ───────────────────────────
 
 type Modo = "entrar" | "criar" | "confirmar" | "esqueci" | "redefinir";
 
-const CABECA: Record<Modo, { titulo: string; texto?: string }> = {
-  entrar: { titulo: "Entrar no Kalman", texto: "Veja as normas e tarefas da sua empresa." },
-  criar: { titulo: "Criar conta no Kalman", texto: "Informe o CNPJ da empresa para ver as normas que valem para ela." },
-  confirmar: { titulo: "Confirme seu e-mail" },
-  esqueci: { titulo: "Redefinir a senha", texto: "Informe o e-mail da conta. Enviamos um código para você criar uma senha nova." },
-  redefinir: { titulo: "Crie uma senha nova" },
+const KALMAN = <span className="laranja">Kalman</span>;
+const CABECA: Record<Modo, { titulo: ReactNode; aba: string; texto?: string }> = {
+  entrar: { titulo: <>Entrar no {KALMAN}</>, aba: "Entrar", texto: "Veja as normas e tarefas da sua empresa." },
+  criar: { titulo: <>Criar conta no {KALMAN}</>, aba: "Criar conta", texto: "Informe o CNPJ da empresa para ver as normas que valem para ela." },
+  confirmar: { titulo: "Confirme seu e-mail", aba: "Confirmar e-mail" },
+  esqueci: { titulo: "Redefinir a senha", aba: "Redefinir a senha", texto: "Informe o e-mail da conta. Enviamos um código para você criar uma senha nova." },
+  redefinir: { titulo: "Crie uma senha nova", aba: "Senha nova" },
 };
+/** Modos que têm rota própria; confirmar e redefinir são etapas dentro da rota em que começaram. */
+const ROTAS: Partial<Record<Modo, string>> = { entrar: "/entrar", criar: "/criar-conta", esqueci: "/esqueci-senha" };
+type EstadoAcesso = { email?: string; info?: string } | null;
 
-function Acesso({ onEntrar }: { onEntrar: (email: string) => void }) {
-  const [modo, setModo] = useState<Modo>(() => (PARAMS.has("criar") || PARAMS.has("cnpj") ? "criar" : "entrar"));
-  const [email, setEmail] = useState("");
+function Acesso({ modoInicial, onEntrar }: { modoInicial: Modo; onEntrar: (email: string) => void }) {
+  const navegar = useNavigate();
+  const { pathname, state } = useLocation();
+  const [params] = useSearchParams();
+  const vindo = state as EstadoAcesso;
+  const [modo, setModo] = useState<Modo>(modoInicial);
+  const [email, setEmail] = useState(vindo?.email ?? "");
   const [senha, setSenha] = useState("");
   const [senha2, setSenha2] = useState("");
-  const [cnpj, setCnpj] = useState(() => mascaraCnpj(PARAMS.get("cnpj") ?? ""));
+  const [cnpj, setCnpj] = useState(() => mascaraCnpj(params.get("cnpj") ?? ""));
   const [codigo, setCodigo] = useState("");
   const [erro, setErro] = useState("");
-  const [info, setInfo] = useState("");
+  const [info, setInfo] = useState(vindo?.info ?? "");
+
+  useEffect(() => { document.title = `${CABECA[modo].aba} · Kalman`; }, [modo]);
   const [ocupado, setOcupado] = useState(false);
   const [tocou, setTocou] = useState<Record<string, boolean>>({});
   const [espera, setEspera] = useState(0);
@@ -196,7 +232,9 @@ function Acesso({ onEntrar }: { onEntrar: (email: string) => void }) {
   }, [espera]);
 
   const senhaOk = CRITERIOS.every((c) => c.ok(senha));
-  const cnpjOk = cnpjValido(cnpj);
+  const conferencia = useConferenciaCnpj(cnpj);
+  // a conta dos dígitos libera na hora; só um "não existe na Receita" segura (Receita fora do ar não segura)
+  const cnpjOk = conferencia.valido && conferencia.receita?.estado !== "nao_encontrado";
   const confereOk = senha2.length > 0 && senha2 === senha;
   const podeCriar = cnpjOk && emailValido(email) && senhaOk && confereOk;
   const podeRedefinir = codigo.length === 6 && senhaOk && confereOk;
@@ -206,9 +244,14 @@ function Acesso({ onEntrar }: { onEntrar: (email: string) => void }) {
     try { await fn(); } catch (err) { setErro(mensagemDeErro(err)); } finally { setOcupado(false); }
   }
 
-  const irPara = (m: Modo, manter = false) => {
-    setModo(m); setErro(""); setTocou({}); setCodigo("");
-    if (!manter) setInfo("");
+  /** Troca de tela: muda de rota quando o modo tem rota própria; senão, troca a etapa aqui mesmo. */
+  const irPara = (m: Modo, aviso = "") => {
+    const rota = ROTAS[m];
+    if (rota && rota !== pathname) {
+      navegar(rota, { state: { email, info: aviso } satisfies EstadoAcesso });
+      return;
+    }
+    setModo(m); setErro(""); setTocou({}); setCodigo(""); setInfo(aviso);
   };
 
   const entrar = () => executar(async () => {
@@ -232,6 +275,8 @@ function Acesso({ onEntrar }: { onEntrar: (email: string) => void }) {
       setTocou({ cnpj: true, email: true, senha: true, senha2: true });
       if (!podeCriar) return;
       return executar(async () => {
+        // se a consulta à Receita ainda está andando, espera por ela antes de criar a conta
+        if ((await conferencia.confirmar())?.estado === "nao_encontrado") throw new Error(MSG_CNPJ_NAO_ENCONTRADO);
         guardarCnpjPendente(soDigitos(cnpj));
         const r = await auth.criar(email, senha);
         if (r.nextStep.signUpStep === "CONFIRM_SIGN_UP") { irPara("confirmar"); setEspera(ESPERA_REENVIO); }
@@ -265,7 +310,7 @@ function Acesso({ onEntrar }: { onEntrar: (email: string) => void }) {
       await auth.redefinir(email, codigo, senha);
       const r = await auth.entrar(email, senha);
       if (r.isSignedIn) onEntrar(email);
-      else { irPara("entrar"); setInfo("Senha alterada. Entre com a senha nova."); }
+      else irPara("entrar", "Senha alterada. Entre com a senha nova.");
     });
   }
 
@@ -281,16 +326,18 @@ function Acesso({ onEntrar }: { onEntrar: (email: string) => void }) {
 
   return (
     <div className="acesso">
-      <aside className="acesso-arte" aria-hidden="true">
-        <Marca escuro className="acesso-marca" />
+      <aside className="acesso-arte">
+        <Link to="/" className="acesso-marca-link" aria-label="Kalman, voltar ao início"><Marca escuro className="acesso-marca" /></Link>
         <MotivoAnimado className="motivo" />
-        <div className="acesso-frase">
+        <div className="acesso-frase" aria-hidden="true">
           <p className="acesso-titulo">Saiba quais normas afetam <span className="laranja">a sua empresa.</span></p>
         </div>
       </aside>
 
       <main className="acesso-lado">
-        <div className="acesso-topo-movel"><Marca className="acesso-marca-movel" /></div>
+        <div className="acesso-topo-movel">
+          <Link to="/" className="acesso-marca-link" aria-label="Kalman, voltar ao início"><Marca className="acesso-marca-movel" /></Link>
+        </div>
         <form className="acesso-form" onSubmit={enviar} noValidate key={modo}>
           <div className="acesso-cabeca">
             <h1>{cabeca.titulo}</h1>
@@ -305,11 +352,11 @@ function Acesso({ onEntrar }: { onEntrar: (email: string) => void }) {
           </div>
 
           {modo === "criar" && (
-            <Campo id="cnpj" rotulo="CNPJ da empresa" mono
-              erro={tocou.cnpj && cnpj && !cnpjOk ? "CNPJ inválido. Confira os dígitos." : ""} ok={cnpjOk}>
+            <Campo id="cnpj" rotulo="CNPJ da empresa" mono ok={cnpjOk}>
               <input id="cnpj" inputMode="numeric" autoComplete="off" placeholder="00.000.000/0000-00" value={cnpj}
                 onChange={(e) => setCnpj(mascaraCnpj(e.target.value))} onBlur={() => setTocou((t) => ({ ...t, cnpj: true }))}
-                aria-invalid={tocou.cnpj && !!cnpj && !cnpjOk} />
+                aria-invalid={cnpjInvalido(cnpj, conferencia, tocou.cnpj)} aria-describedby="cnpj-status" />
+              <StatusCnpj id="cnpj-status" valor={cnpj} conferencia={conferencia} tocou={tocou.cnpj} />
             </Campo>
           )}
 
@@ -430,6 +477,7 @@ function Painel({ email, onSair }: { email: string; onSair: () => void }) {
   }, []);
 
   const nome = cadastro?.empresa?.nome_fantasia || cadastro?.empresa?.razao_social;
+  useEffect(() => { document.title = nome ? `${titulo(nome)} · Kalman` : "Painel · Kalman"; }, [nome]);
   let corpo: ReactNode;
   if (cadastro === undefined) corpo = <div className="centro-area"><Carregando /></div>;
   else if (consultando) corpo = <Consultando />;
@@ -444,7 +492,7 @@ function Painel({ email, onSair }: { email: string; onSair: () => void }) {
     <div className="painel">
       <header className="barra">
         <div className="barra-linha">
-          <a href={demoAtivo ? "?demo=dados" : "/"} aria-label="Kalman"><Marca className="barra-marca" /></a>
+          <Link to="/" aria-label="Kalman, ir para o início"><Marca className="barra-marca" /></Link>
           {nome && !consultando && <span className="barra-empresa">{titulo(nome)}</span>}
           <div className="barra-direita">
             <span className="barra-email">{email}</span>
@@ -497,22 +545,35 @@ function ConviteRecebido({ convite, onAceito, onRecusado }: { convite: Convite; 
 function PedirCnpj({ erro, onConsultar, onCancelar }: { erro: string; onConsultar: (cnpj: string) => void; onCancelar?: () => void }) {
   const [cnpj, setCnpj] = useState(() => mascaraCnpj(lerCnpjPendente()));
   const [tocou, setTocou] = useState(false);
-  const ok = cnpjValido(cnpj);
+  const conferencia = useConferenciaCnpj(cnpj);
+  const ok = conferencia.valido && conferencia.receita?.estado !== "nao_encontrado";
+
+  async function enviar(e: FormEvent) {
+    e.preventDefault();
+    setTocou(true);
+    if (!ok) return;
+    if ((await conferencia.confirmar())?.estado === "nao_encontrado") return; // o status já mostra o motivo
+    onConsultar(soDigitos(cnpj));
+  }
+
   return (
     <section className="centro-area">
-      <form className="pedir" onSubmit={(e) => { e.preventDefault(); setTocou(true); if (ok) onConsultar(soDigitos(cnpj)); }} noValidate>
+      <form className="pedir" onSubmit={enviar} noValidate>
         <Icone className="icone-48" />
         <h1>{onCancelar ? "Trocar o CNPJ" : "Qual é o CNPJ da empresa?"}</h1>
         <p className="apoio">O perfil sai da Receita Federal. Você só confere.</p>
         <div className="pedir-linha">
           <label htmlFor="cnpj-painel" className="sr">CNPJ</label>
           <input id="cnpj-painel" className="cnpj-grande" inputMode="numeric" autoComplete="off" autoFocus placeholder="00.000.000/0000-00"
-            value={cnpj} onChange={(e) => setCnpj(mascaraCnpj(e.target.value))} aria-invalid={tocou && !ok} />
+            value={cnpj} onChange={(e) => setCnpj(mascaraCnpj(e.target.value))}
+            aria-invalid={cnpjInvalido(cnpj, conferencia, tocou)} aria-describedby="cnpj-painel-status" />
           <button className="k-btn" type="submit" disabled={!ok}>Consultar</button>
         </div>
-        <p className="campo-msg" data-erro={(tocou && cnpj && !ok) || erro ? "" : undefined} aria-live="polite">
-          {erro || (tocou && cnpj && !ok ? "CNPJ inválido. Confira os dígitos." : "")}
-        </p>
+        {erro ? (
+          <p className="campo-msg" data-erro="" role="alert">{erro}</p>
+        ) : (
+          <StatusCnpj id="cnpj-painel-status" valor={cnpj} conferencia={conferencia} tocou={tocou} centro />
+        )}
         {onCancelar && <button type="button" className="link" onClick={onCancelar}>Voltar aos dados</button>}
       </form>
     </section>
@@ -633,18 +694,18 @@ function Dados({ cadastro, onSalvo, onTrocar, onSaiu }: {
         <p className="nota-leitura"><span className="k-ponto" aria-hidden="true" /> Você é membro desta empresa: vê os dados, mas só o dono edita.</p>
       )}
 
-      <form className="secoes" onSubmit={salvar}>
+      <form className="blocos" onSubmit={salvar}>
         {SECOES.map((s) => (
-          <fieldset key={s.id} className="secao">
+          <fieldset key={s.id} className="bloco">
             <legend className="sr">{s.nome}</legend>
-            <div className="secao-titulo"><h2>{s.nome}</h2><p>{s.texto}</p></div>
-            <div className="secao-campos">{s.chaves.map(input)}</div>
+            <div className="bloco-titulo"><h2>{s.nome}</h2><p>{s.texto}</p></div>
+            <div className="bloco-campos">{s.chaves.map(input)}</div>
           </fieldset>
         ))}
-        <fieldset className="secao">
+        <fieldset className="bloco">
           <legend className="sr">Endereço</legend>
-          <div className="secao-titulo"><h2>Endereço</h2><p>Veio da Receita.</p></div>
-          <div className="secao-campos">
+          <div className="bloco-titulo"><h2>Endereço</h2><p>Veio da Receita.</p></div>
+          <div className="bloco-campos">
             {editarEndereco ? (
               <div className="grade-endereco">{ENDERECO.map(input)}</div>
             ) : (
@@ -704,8 +765,8 @@ function Equipe({ cadastro, onSaiu }: { cadastro: Cadastro; onSaiu: () => void }
   }
 
   return (
-    <section className="secao equipe" aria-labelledby="t-equipe">
-      <div className="secao-titulo">
+    <section className="bloco equipe" aria-labelledby="t-equipe">
+      <div className="bloco-titulo">
         <h2 id="t-equipe">Equipe</h2>
         <p>{souDono ? "Quem vê os dados e os alertas desta empresa." : "Quem acompanha esta empresa."}</p>
       </div>
@@ -768,6 +829,53 @@ function Equipe({ cadastro, onSaiu }: { cadastro: Cadastro; onSaiu: () => void }
 }
 
 // ─────────────────────────── peças ───────────────────────────
+
+const MSG_CNPJ_NAO_ENCONTRADO = "Este CNPJ não aparece na Receita Federal. Confira o número.";
+
+/** Campo em vermelho: conta dos dígitos errada, CNPJ inexistente, ou incompleto depois de sair do campo. */
+const cnpjInvalido = (valor: string, c: ConferenciaCnpj, tocou?: boolean) => {
+  const n = soDigitos(valor).length;
+  return (c.completo && !c.valido) || c.receita?.estado === "nao_encontrado" || (!!tocou && n > 0 && n < 14);
+};
+
+/**
+ * Linha embaixo do campo de CNPJ. A conta dos dígitos é instantânea; com a conta certa, mostra a consulta na Receita:
+ * a razão social e a cidade (achou), "não aparece na Receita" (bloqueia) ou "não deu para conferir" (não bloqueia).
+ */
+function StatusCnpj({ id, valor, conferencia: c, tocou, centro }: {
+  id: string; valor: string; conferencia: ConferenciaCnpj; tocou?: boolean; centro?: boolean;
+}) {
+  const n = soDigitos(valor).length;
+  let tipo: "erro" | "ok" | "aviso" | "neutro" = "neutro";
+  let texto: ReactNode = null;
+  const r = c.receita;
+  const girando = c.valido && (c.consultando || !r);
+
+  if (c.completo && !c.valido) { tipo = "erro"; texto = "CNPJ inválido. Confira os dígitos."; }
+  else if (!c.completo) { if (tocou && n > 0) { tipo = "erro"; texto = `Faltam ${14 - n} ${14 - n === 1 ? "dígito" : "dígitos"}.`; } }
+  else if (c.consultando || !r) { texto = "Conferindo na Receita Federal…"; }
+  else if (r.estado === "nao_encontrado") { tipo = "erro"; texto = MSG_CNPJ_NAO_ENCONTRADO; }
+  else if (r.estado === "indisponivel") { texto = "Não deu para conferir na Receita agora. Você pode seguir."; }
+  else {
+    const ativa = !r.situacao || r.situacao.toLowerCase() === "ativa";
+    tipo = ativa ? "ok" : "aviso";
+    texto = (
+      <>
+        <strong>{titulo(r.razaoSocial) || "Empresa encontrada"}</strong>
+        {r.municipio && <> · {titulo(r.municipio)}/{r.uf}</>}
+        {!ativa && <> · situação na Receita: {r.situacao?.toLowerCase()}</>}
+      </>
+    );
+  }
+
+  return (
+    <p id={id} className={`cnpj-status cnpj-status--${tipo}${centro ? " cnpj-status--centro" : ""}`}
+      role={tipo === "erro" ? "alert" : "status"} aria-live="polite">
+      {girando && <span className="cnpj-girando" aria-hidden="true" />}
+      {texto && <span>{texto}</span>}
+    </p>
+  );
+}
 
 function Campo({ id, rotulo, erro, ok, mono, children }: { id: string; rotulo: string; erro?: string; ok?: boolean; mono?: boolean; children: ReactNode }) {
   return (

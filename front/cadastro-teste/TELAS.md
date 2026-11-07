@@ -1,4 +1,4 @@
-# Telas de acesso, cadastro e equipe (07/11/2026)
+# Landing, acesso, cadastro e equipe (07/11/2026)
 
 > Estado: **testado de ponta a ponta contra a stack real** (Cognito + API + DynamoDB), na branch `feat/front-kalman`
 > (feita a partir do `main` do Gabriel com membros e convites). A lógica e o cliente `src/api.ts` são os do Gabriel;
@@ -12,16 +12,39 @@ make front-dev     # http://localhost:5173 (porta fixa, liberada no CORS)
 make front-check   # typecheck
 ```
 
-O `.env` virou opcional: sem ele, `src/config.ts` usa os valores públicos da stack `cnpj-cadastro` (é o que a Lovable vai
+`http://localhost:5173/` abre a landing. O `.env` virou opcional: sem ele, `src/config.ts` usa os valores públicos da stack `cnpj-cadastro` (é o que a Lovable vai
 usar). Se a stack for recriada, troque os três valores do `STACK` em `src/config.ts`.
 
-| Endereço | O que abre |
+## Rotas (React Router)
+
+| Rota | O que abre |
 |---|---|
-| `/` | Fluxo real, tela **Entrar** |
-| `/?criar` | Fluxo real, tela **Criar conta** (é para onde a landing manda) |
-| `/?criar&cnpj=33050071000158` | Criar conta com o CNPJ já preenchido e validado |
-| `/?demo` | Demonstração sem Cognito (qualquer e-mail e senha; código: 6 dígitos quaisquer) |
-| `/?demo=vazio` · `dados` · `membro` · `convite` | Demonstração já logado: antes do CNPJ · dono com equipe · membro (só leitura) · com convite pendente |
+| `/` | **Landing** (`src/landing/`). Links antigos `/?criar&cnpj=` redirecionam para `/criar-conta` |
+| `/entrar` | Entrar |
+| `/criar-conta` | Criar conta; `?cnpj=33050071000158` já preenche e confere o CNPJ (é para onde a landing manda). A etapa "Confirme seu e-mail" acontece aqui dentro |
+| `/esqueci-senha` | Redefinir a senha (a etapa "Crie uma senha nova" acontece aqui dentro) |
+| `/painel` | Área logada. Sem sessão → `/entrar`. Com sessão, `/entrar` e `/criar-conta` → `/painel`. Sair → `/` |
+| `/privacidade`, `/termos` | Páginas legais |
+| qualquer outra | `/` |
+
+Em dev o Vite devolve o `index.html` para qualquer caminho; na hospedagem (Lovable ou outra), as rotas precisam do
+mesmo "fallback de SPA". O logo das telas de acesso e do painel leva a `/`.
+
+Demonstração sem Cognito (só em dev): `/entrar?demo` (qualquer e-mail e senha; código: 6 dígitos quaisquer) e
+`/painel?demo=vazio` · `dados` · `membro` · `convite` (antes do CNPJ · dono com equipe · membro · convite pendente).
+
+## Conferência do CNPJ (`src/cnpj.ts`)
+
+1. **Conta dos dígitos verificadores**, instantânea: com 14 dígitos já diz se é válido; incompleto, ao sair do campo
+   diz quantos faltam.
+2. **Consulta na Receita** pela OpenCNPJ (`api.opencnpj.org`, pública, sem chave, CORS liberado), 250 ms depois que a
+   pessoa para de digitar. Respondeu em 50 a 450 ms nos testes. Mostra a razão social e a cidade (e a situação, se não
+   for "ativa"), ou "Este CNPJ não aparece na Receita Federal" (404).
+3. **Ao criar a conta**, espera a consulta se ela ainda estiver andando. CNPJ inexistente **bloqueia**; OpenCNPJ fora
+   do ar ou lenta (> 4 s) **não bloqueia** ("Não deu para conferir na Receita agora. Você pode seguir."). O cadastro
+   oficial continua sendo a consulta da API do Kalman depois do `POST /cadastro`.
+
+Vale para "Criar conta" e para "Qual é o CNPJ da empresa?" no painel. Resultados ficam em cache na aba.
 
 O modo demonstração (`src/demo.ts`) só existe em `npm run dev`; o build de produção não o inclui (conferido). Para
 tirá-lo do projeto: apagar `demo.ts` e as referências a `demoApi`, `demoAuth`, `demoAtivo`, `demoLogado` e `DEMO_EMAIL`
@@ -36,14 +59,22 @@ branco sobre esse laranja dá 3,1:1).
 
 ## Telas
 
+### 0. Landing (`/`)
+A versão aprovada em HTML (`torre-regulatoria/mockups/landing-final/index.html`) portada para React sem mudar o visual
+(conferido: mesma altura e mesmas posições de seção em 1440 px e 390 px). Marcação em `src/landing/Landing.tsx`, estilo
+em `landing.css` (todo dentro de `.lp`, CSS aninhado, animações com prefixo `lp-`), comportamento do `<script>` em
+`iniciar.ts` (com limpeza ao sair da rota). Textos sem setor: sem "distribuidora" e sem "ANEEL" (a citação da
+REN 1.174 usa "(...)" no lugar do sujeito, para não alterar o texto da norma).
+
 ### 1. Acesso (tela dividida)
-Esquerda grafite (só no PC) com o motivo animado (`src/MotivoAnimado.tsx`) e "Saiba quais normas afetam **a sua
-empresa.**". Direita, o formulário (24 rem). No celular, só o formulário.
+Esquerda grafite (só no PC) com o logo (link para `/`), o motivo animado (`src/MotivoAnimado.tsx`) e "Saiba quais
+normas afetam **a sua empresa.**". Direita, o formulário (24 rem), com o título numa linha só e "Kalman" em laranja.
+No celular, só o formulário, com o logo (link para `/`) no topo.
 
 | Modo | O que tem |
 |---|---|
 | **Entrar** | E-mail, senha (com olho), "Esqueci a senha", Entrar, "Criar conta". Conta não confirmada → reenvia o código e vai para Confirmar |
-| **Criar conta** | CNPJ (máscara + dígitos verificadores, ✓ quando válido), e-mail corporativo, senha com medidor (Fraca/Boa/Forte, mostra o que falta pela regra do Cognito), confirmar senha. Botão só libera com tudo válido |
+| **Criar conta** | CNPJ (máscara, conta dos dígitos na hora e consulta na Receita, ver acima), e-mail corporativo, senha com medidor (Fraca/Boa/Forte, mostra o que falta pela regra do Cognito), confirmar senha. Botão só libera com tudo válido |
 | **Confirmar e-mail** | Código de 6 dígitos num campo grande; "Reenviar código" com espera de 30 s; "Usar outro e-mail" |
 | **Esqueci a senha** | E-mail → "Enviar código" |
 | **Crie uma senha nova** | Código + senha nova (com medidor) + confirmar → salva e já entra |
@@ -89,6 +120,7 @@ demo; o envio real do código ainda precisa de uma pessoa com caixa de entrada.
 ## Pendências
 1. Testar com um e-mail de verdade: receber o código (cadastro e esqueci a senha) e ver o e-mail no Gmail/Outlook.
 2. CORS: incluir a URL da Lovable em `AllowedOrigins` e publicar (`sam deploy --parameter-overrides ...`).
-3. Lovable: o app precisa estar na raiz de um repositório (hoje está em `front/cadastro-teste/`).
+3. Lovable: o app precisa estar na raiz de um repositório (hoje está em `front/cadastro-teste/`) e a hospedagem precisa
+   do fallback de SPA para as rotas.
 4. `custom:cnpj` no Cognito, para o vínculo valer fora do navegador.
 5. E-mail de convite e e-mail de alerta de normas (depois do dashboard, quando os campos do alerta estiverem definidos).
