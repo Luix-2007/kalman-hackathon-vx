@@ -11,7 +11,7 @@ import {
   updateUserAttribute,
 } from "aws-amplify/auth";
 import { startTransition, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
-import { Link, Navigate, Route, Routes, useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, Navigate, NavLink, Route, Routes, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import * as apiReal from "./api";
 import Landing from "./landing/Landing";
 import { Privacidade, Termos } from "./landing/Legal";
@@ -21,6 +21,7 @@ import { configured } from "./config";
 import { DEMO_EMAIL, demoApi, demoAtivo, demoAuth, demoLogado } from "./demo";
 import { Icone, Marca } from "./identidade/marca";
 import { MotivoAnimado } from "./MotivoAnimado";
+import { TelaMatriz } from "./TelaMatriz";
 
 // ─────────────────────────── integrações (reais ou demonstração) ───────────────────────────
 
@@ -129,6 +130,7 @@ const reguladorDoCnae = (cnae?: string) => {
 //   /                landing (pública)          /privacidade, /termos   páginas legais
 //   /entrar          entrar                     /criar-conta            criar conta (aceita ?cnpj=)
 //   /esqueci-senha   redefinir a senha          /painel                 área logada (sem sessão → /entrar)
+//   /painel/matriz   matriz de obrigações (envio da planilha e obrigações vigentes)
 //
 // Confirmar o e-mail e criar a senha nova são etapas dentro de /criar-conta e /esqueci-senha (precisam do e-mail e da
 // senha digitados na etapa anterior, que não vão para a URL).
@@ -172,7 +174,7 @@ export default function App() {
         <Route path="/entrar" element={acesso("entrar")} />
         <Route path="/criar-conta" element={acesso("criar")} />
         <Route path="/esqueci-senha" element={acesso("esqueci")} />
-        <Route path="/painel" element={email === undefined ? carregando : email ? <Painel email={email} onSair={sair} /> : <Navigate to="/entrar" replace />} />
+        <Route path="/painel/*" element={email === undefined ? carregando : email ? <Painel email={email} onSair={sair} /> : <Navigate to="/entrar" replace />} />
         <Route path="/privacidade" element={<Privacidade />} />
         <Route path="/termos" element={<Termos />} />
         <Route path="*" element={<Navigate to="/" replace />} />
@@ -456,6 +458,7 @@ function Painel({ email, onSair }: { email: string; onSair: () => void }) {
   const iniciou = useRef(false);
 
   useEffect(() => { auth.lerNome().then(setMeuNome).catch(() => setMeuNome("")); }, []);
+  const secao = useLocation().pathname.startsWith("/painel/matriz") ? "matriz" : "empresa";
 
   async function consultar(cnpj: string, consultadoAntes: string | null = cadastro?.consultado_em ?? null) {
     setErro("");
@@ -498,12 +501,13 @@ function Painel({ email, onSair }: { email: string; onSair: () => void }) {
   }, []);
 
   const nomeEmpresa = cadastro?.empresa?.nome_fantasia || cadastro?.empresa?.razao_social;
-  useEffect(() => { document.title = "Kalman · Painel"; }, []);
+  useEffect(() => { document.title = secao === "matriz" ? "Kalman · Matriz" : "Kalman · Painel"; }, [secao]);
   let corpo: ReactNode;
   if (cadastro === undefined) corpo = <div className="centro-area"><Carregando /></div>;
   else if (consultando) corpo = <Consultando />;
   else if (!cadastro && convite) corpo = <ConviteRecebido convite={convite} onAceito={() => carregar()} onRecusado={() => setConvite(null)} />;
   else if (!cadastro || trocando) corpo = <PedirCnpj erro={erro} onConsultar={(c) => consultar(c)} onCancelar={cadastro ? () => { setTrocando(false); setErro(""); } : undefined} />;
+  else if (secao === "matriz") corpo = <TelaMatriz cadastro={cadastro} />;
   else corpo = (
     <Dados cadastro={cadastro} email={email} meuNome={meuNome ?? ""} onNome={setMeuNome} onSalvo={setCadastro} onTrocar={() => setTrocando(true)}
       onReconsultar={() => cadastro.cnpj && consultar(cadastro.cnpj)}
@@ -521,6 +525,12 @@ function Painel({ email, onSair }: { email: string; onSair: () => void }) {
             <button className="k-btn k-btn--contorno k-btn--sm" type="button" onClick={onSair}>Sair</button>
           </div>
         </div>
+        {cadastro && !consultando && !trocando && (
+          <nav className="abas" aria-label="Seções do painel">
+            <NavLink to="/painel" end className="aba">Empresa</NavLink>
+            <NavLink to="/painel/matriz" className="aba">Matriz</NavLink>
+          </nav>
+        )}
       </header>
       <main className="painel-corpo">{corpo}</main>
     </div>

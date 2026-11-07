@@ -6,6 +6,8 @@ API da matriz de obrigações (lê e decide sobre a gold do lakehouse, pelo Athe
     POST  /obrigacoes/{id}/decisao        {"versao": 2, "decisao": "aprovar"|"rejeitar", "comentario"?}
     GET   /tarefas[?em_risco=true&obrigacao_id=OBR-1]
     PATCH /tarefas/{id}                   {"status": "aberta"|"em_andamento"|"concluida", "evidencia_url"?}
+    POST  /importacoes                    envia a planilha da matriz (CSV/XLSX) e dispara o job (importacao.py)
+    GET   /importacoes                    arquivos enviados e estado do último processamento
 
 Header: Authorization: Bearer <access token do Cognito> (o mesmo login do cadastro).
 O CNPJ e o papel vêm da tabela do cadastro (item do usuário), nunca do front:
@@ -29,6 +31,7 @@ from datetime import date, datetime, timedelta, timezone
 import boto3
 
 import athena
+import importacao
 import regras_matriz as regras
 import sql_matriz as sql
 
@@ -281,7 +284,15 @@ def handler(event, context=None):
             if not sql.TAREFA_ID.match(params["id"]):
                 raise ErroApi(400, "id de tarefa inválido")
             return mudar_tarefa(user_id, cnpj, papel, params["id"], _corpo(event))
+        if rota == "GET /importacoes":
+            return resp(*importacao.listar(cnpj))
+        if rota == "POST /importacoes":
+            if papel != "dono":
+                raise ErroApi(403, "só o dono da organização pode enviar a matriz")
+            return resp(*importacao.importar(cnpj, user_id, _corpo(event)))
         return resp(404, {"erro": "rota não encontrada"})
+    except importacao.ErroImportacao as exc:
+        return resp(exc.status, {"erro": exc.erro})
     except ErroApi as exc:
         return resp(exc.status, {"erro": exc.erro})
     except sql.ValorInvalido as exc:

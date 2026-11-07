@@ -15,6 +15,8 @@
  * demoApi, demoAuth, demoAtivo, demoLogado e DEMO_EMAIL no App.tsx.
  */
 import type { Cadastro, Convite, Empresa, Membros } from "./api";
+import type { Importacao, Obrigacao, Processamento } from "./matriz";
+import { lerCsv } from "./planilha";
 import light from "./dados/light-opencnpj.json";
 
 const params = new URLSearchParams(location.search);
@@ -148,5 +150,44 @@ export const demoAuth = {
   async confirmResetPassword({ confirmationCode }: { username: string; confirmationCode: string; newPassword: string }) {
     await espera(600);
     if (!/^\d{6}$/.test(confirmationCode)) throw Object.assign(new Error("Código incorreto."), { name: "CodeMismatchException" });
+  },
+};
+
+/** Matriz sem AWS: a importação "processa" em 8 s e as obrigações viram as linhas da planilha enviada. */
+let importacoesDemo: Importacao[] = [];
+let processamentoDemo: Processamento = null;
+let obrigacoesDemo: Obrigacao[] = [];
+export const demoMatriz = {
+  async getImportacoes() {
+    await espera(250);
+    if (processamentoDemo?.estado === "RUNNING" && Date.now() - new Date(processamentoDemo.inicio).getTime() > 8000)
+      processamentoDemo = { ...processamentoDemo, estado: "SUCCEEDED", fim: new Date().toISOString() };
+    return { importacoes: structuredClone(importacoesDemo), processamento: processamentoDemo };
+  },
+  async importarMatriz(nome: string, conteudo: { texto: string } | { base64: string }) {
+    await espera(700);
+    const agora = new Date().toISOString();
+    const arquivo = `${agora.slice(0, 19).replace(/[-:]/g, "").replace("T", "-")}-${nome}`;
+    importacoesDemo = [{ arquivo, tamanho: "texto" in conteudo ? conteudo.texto.length : conteudo.base64.length, enviado_em: agora }, ...importacoesDemo];
+    processamentoDemo = { estado: "RUNNING", inicio: agora, fim: null };
+    if ("texto" in conteudo) {
+      obrigacoesDemo = lerCsv(conteudo.texto).registros.filter((r) => r.obrigacao_id && r.titulo).map((r) => ({
+        cnpj: EXEMPLO.cnpj!, obrigacao_id: r.obrigacao_id, versao: 1, titulo: r.titulo, fonte_ato: r.fonte_ato || null,
+        fonte_dispositivo: r.fonte_dispositivo || null, fonte_url: r.fonte_url || null, trecho_citado: r.trecho_citado || null,
+        orgao_sigla: r.orgao_sigla || null, tema: r.tema || null, aplica_a: [], recorrencia: (r.recorrencia || "continua") as Obrigacao["recorrencia"],
+        periodicidade: r.periodicidade || null, prazo_regra: r.prazo_regra || null, prazo_json: r.prazo_json || null,
+        area_responsavel: r.area_responsavel || null, evidencia: r.evidencia || null, criticidade: (r.criticidade || null) as Obrigacao["criticidade"],
+        origem: "matriz_importada", status: "aprovada", confianca: null, incluida_em: agora.slice(0, 10), alterada_por: null,
+        vigente: true, mudanca: "inclusao",
+      }));
+    }
+    return { arquivo, enviado_em: agora, processamento: processamentoDemo };
+  },
+  async getObrigacoes() {
+    await espera(300);
+    const pronta = processamentoDemo?.estado === "SUCCEEDED";
+    return pronta
+      ? { obrigacoes: structuredClone(obrigacoesDemo), resumo: { vigentes: obrigacoesDemo.length, propostas: 0 } }
+      : { obrigacoes: [], aviso: "a matriz desta empresa ainda não foi processada" };
   },
 };

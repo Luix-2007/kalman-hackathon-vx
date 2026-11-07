@@ -124,6 +124,27 @@ No **Cognito** (atributo padrão `name`: já existe no pool, opcional e editáve
 sem mudança na stack. O DynamoDB não tem dados da pessoa (só o vínculo usuário → CNPJ e papel) e a API não tem rota
 para isso. Para a lista da Equipe mostrar nomes, a API teria de ler o `name` no Cognito, como já lê o e-mail.
 
+### 3. Matriz de obrigações (`/painel/matriz`, aba "Matriz")
+A planilha que a empresa já usa vira obrigações com prazo calculado e tarefas com data (job `pipeline/matriz`). É a
+base do dashboard. Arquivos: `src/TelaMatriz.tsx` (tela), `src/planilha.ts` (leitura e conferência do CSV),
+`src/matriz.ts` (cliente da API, do Gabriel, com `getImportacoes` e `importarMatriz`).
+
+- **Enviar a planilha** (só quem criou a conta): arrastar ou escolher um `.csv` ou `.xlsx` (até 2 MB), ou baixar o
+  modelo. O CSV é lido e **conferido no navegador com as mesmas regras do job** (`_validar` e `ler_prazo_json`):
+  `obrigacao_id`, `titulo`, `recorrencia`, `periodicidade`, `criticidade`, `prazo_json`, unidades de `aplica_a` que
+  existem no perfil, IDs repetidos. A prévia mostra primeiro as linhas com erro, com o motivo. Linhas com erro ficam
+  de fora; sem nenhuma válida (ou sem as colunas obrigatórias), o envio fica bloqueado. O `.xlsx` não tem prévia: é
+  conferido no processamento. "Colunas da planilha" explica cada coluna e dá exemplos de `prazo_json`.
+- **Envios:** arquivos já enviados e o estado do último processamento ("Processando há N minutos (leva de 7 a 15)" →
+  "Processada em …"). A tela consulta de novo a cada 15 s enquanto processa.
+- **Obrigações:** as vigentes, vindas de `GET /obrigacoes` (ID, título, órgão, criticidade); um clique abre prazo,
+  recorrência, fonte (com link), trecho, área, evidência e versão.
+- Membro: vê envios e obrigações, sem a área de envio.
+- Conferido com a planilha da Aurora (`pipeline/matriz/fixtures/aurora/matriz.csv`): 22 de 22 válidas com as
+  unidades do perfil dela; com o perfil da Light (sem unidades), 1 de 22, porque as outras citam `UN-xx` em `aplica_a`.
+- **Lacuna:** a tela não tem onde cadastrar as unidades, as áreas e as outorgas do perfil (o formulário de teste do
+  Gabriel tinha). Sem unidades, a planilha precisa vir com `aplica_a` vazio (a tela avisa).
+
 ## E-mail do código (Cognito)
 
 Gatilho **CustomMessage** (`api/cnpj-cadastro/src/email_cognito.py`, publicado em 07/11): assunto e HTML na identidade

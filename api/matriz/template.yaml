@@ -21,6 +21,9 @@ Parameters:
     Type: String
     Default: lakehouse-pipeline-lakehouse
     Description: Output AthenaWorkGroupName do stack lakehouse-pipeline (já tem local de resultados)
+  MatrizStateMachineArn:
+    Type: String
+    Description: Output StateMachineArn do stack lakehouse-matriz (POST /importacoes dispara o job na hora)
   AllowedOrigins:
     Type: CommaDelimitedList
     Default: "http://localhost:3000,http://localhost:5173"
@@ -60,6 +63,8 @@ Resources:
         Variables:
           TABLE_NAME: !Ref CadastroTableName
           ATHENA_WORKGROUP: !Ref AthenaWorkGroup
+          LAKE_BUCKET: !Ref LakeBucketName
+          MATRIZ_STATE_MACHINE_ARN: !Ref MatrizStateMachineArn
       Policies:
         - DynamoDBReadPolicy:
             TableName: !Ref CadastroTableName
@@ -101,6 +106,15 @@ Resources:
               Effect: Allow
               Action: [s3:GetObject, s3:PutObject, s3:AbortMultipartUpload]
               Resource: !Sub arn:${AWS::Partition}:s3:::${LakeBucketName}/athena-results/*
+            # importação pelo front: grava a planilha na landing e dispara o job da matriz (importacao.py)
+            - Sid: ImportarMatriz
+              Effect: Allow
+              Action: s3:PutObject
+              Resource: !Sub arn:${AWS::Partition}:s3:::${LakeBucketName}/landing/matriz/importada/*
+            - Sid: ProcessarMatriz
+              Effect: Allow
+              Action: [states:StartExecution, states:ListExecutions]
+              Resource: !Ref MatrizStateMachineArn
       Events:
         ListarObrigacoes:
           Type: HttpApi
@@ -117,6 +131,12 @@ Resources:
         MudarTarefa:
           Type: HttpApi
           Properties: { ApiId: !Ref MatrizApi, Method: PATCH, Path: "/tarefas/{id}" }
+        ListarImportacoes:
+          Type: HttpApi
+          Properties: { ApiId: !Ref MatrizApi, Method: GET, Path: /importacoes }
+        Importar:
+          Type: HttpApi
+          Properties: { ApiId: !Ref MatrizApi, Method: POST, Path: /importacoes }
 
 Outputs:
   ApiUrl:

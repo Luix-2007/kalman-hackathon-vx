@@ -98,3 +98,21 @@ export const getTarefas = (filtro: { em_risco?: boolean; obrigacao_id?: string }
 export const mudarTarefa = (id: string, status: StatusTarefa, evidencia_url?: string | null) =>
   chamar<{ tarefa: Tarefa }>("PATCH", `/tarefas/${id}`, 200,
     evidencia_url === undefined ? { status } : { status, evidencia_url });
+
+// ---------- importação da planilha (POST/GET /importacoes, api/matriz/src/importacao.py) ----------
+
+export type Importacao = { arquivo: string; tamanho: number; enviado_em: string };
+/** Último processamento da matriz (máquina de estados lakehouse-matriz). Leva de 7 a 15 minutos. */
+export type Processamento = {
+  estado: "RUNNING" | "SUCCEEDED" | "FAILED" | "TIMED_OUT" | "ABORTED" | "PENDING_REDRIVE";
+  inicio: string;
+  fim: string | null;
+} | null;
+
+export const getImportacoes = () =>
+  chamar<{ importacoes: Importacao[]; processamento: Processamento }>("GET", "/importacoes", 200);
+
+/** Envia a planilha: CSV como texto, XLSX em base64. Só o dono (403). Dispara o processamento na hora. */
+export const importarMatriz = (nome: string, conteudo: { texto: string } | { base64: string }) =>
+  chamar<{ arquivo: string; enviado_em: string; processamento: Processamento }>("POST", "/importacoes", 201,
+    "texto" in conteudo ? { nome, conteudo: conteudo.texto } : { nome, conteudo_base64: conteudo.base64 });
