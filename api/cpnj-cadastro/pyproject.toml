@@ -1,0 +1,16 @@
+[project]
+name = "cnpj-cadastro"
+version = "0.1.0"
+description = "Consulta o CNPJ do usuario no OpenCNPJ e salva no DynamoDB"
+requires-python = ">=3.13"
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "boto3",
+    "moto[dynamodb]",
+    "pytest",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

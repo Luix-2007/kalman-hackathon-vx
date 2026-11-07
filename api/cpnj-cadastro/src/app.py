@@ -1,0 +1,92 @@
+"""
+Enriquece o cadastro de um usuário com os dados do CNPJ (OpenCNPJ -> DynamoDB).
+
+Gatilho: evento no EventBridge publicado pelo seu backend no cadastro:
+
+    {
+      "Source": "app.usuarios",
+      "DetailType": "UsuarioCadastrado",
+      "Detail": "{\"user_id\": \"123\", \"cnpj\": \"00.000.000/0001-91\"}"
+    }
+
+A Lambda consulta https://api.opencnpj.org/{cnpj}?datasets=receita e grava
+o resultado na tabela, com chave user_id.
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+import os
+import re
+import urllib.error
+import urllib.request
+from datetime import datetime, timezone
+from decimal import Decimal
+
+import boto3
+
+log = logging.getLogger()
+log.setLevel(os.environ.get("LOG_LEVEL", "INFO"))
+
+TABLE_NAME = os.environ.get("TABLE_NAME", "usuarios-cnpj")
+API_URL = os.environ.get("OPENCNPJ_API_URL", "https://api.opencnpj.org")
+
+_table = boto3.resource("dynamodb").Table(TABLE_NAME)
+
+
+class RetryableError(Exception):
+    """Erro temporário (429/5xx/rede): a Lambda falha e o EventBridge/Lambda tenta de novo."""
+
+
+def normalize_cnpj(value: str) -> str:
+    """Remove máscara. Aceita o CNPJ alfanumérico novo (12 caracteres + 2 dígitos)."""
+    cnpj = re.sub(r"[^0-9A-Za-z]", "", value or "").upper()
+    if not re.fullmatch(r"[0-9A-Z]{12}[0-9]{2}", cnpj):
+        raise ValueError(f"CNPJ inválido: {value!r}")
+    return cnpj
+
+
+def fetch_cnpj(cnpj: str) -> dict | None:
+    """Retorna os dados do CNPJ, ou None se não existir na base."""
+    req = urllib.request.Request(
+        f"{API_URL}/{cnpj}?datasets=receita",
+        headers={"User-Agent": "cadastro-usuarios", "Accept": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            return json.loads(resp.read(), parse_float=Decimal)
+    except urllib.error.HTTPError as exc:
+        if exc.code == 404:
+            return None
+        if exc.code == 429 or exc.code >= 500:
+            raise RetryableError(f"OpenCNPJ HTTP {exc.code}") from exc
+        raise
+    except (urllib.error.URLError, TimeoutError) as exc:
+        raise RetryableError(str(exc)) from exc
+
+
+def handler(event: dict, context=None) -> dict:
+    detail = event.get("detail", event)  # aceita evento do EventBridge ou payload direto
+    user_id = str(detail["user_id"])
+    now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+    try:
+        cnpj = normalize_cnpj(detail["cnpj"])
+    except ValueError:
+        _table.put_item(Item={"user_id": user_id, "cnpj": detail.get("cnpj"), "status": "cnpj_invalido", "consultado_em": now})
+        log.warning("user %s: CNPJ inválido %r", user_id, detail.get("cnpj"))
+        return {"user_id": user_id, "status": "cnpj_invalido"}
+
+    empresa = fetch_cnpj(cnpj)
+    if empresa is None:
+        status = "nao_encontrado"
+    else:
+        status = "ativa" if str(empresa.get("situacao_cadastral", "")).lower() == "ativa" else "inativa"
+
+    item = {"user_id": user_id, "cnpj": cnpj, "status": status, "consultado_em": now}
+    if empresa is not None:
+        item["empresa"] = empresa
+    _table.put_item(Item=item)
+    log.info("user %s: CNPJ %s -> %s", user_id, cnpj, status)
+    return {"user_id": user_id, "cnpj": cnpj, "status": status}
