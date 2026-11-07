@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
-Description: Consulta o CNPJ do usuario no OpenCNPJ no cadastro e salva no DynamoDB
+Description: Cadastro de usuarios (Cognito) com enriquecimento do CNPJ via OpenCNPJ, salvo no DynamoDB
 
 Parameters:
   EventSource:
@@ -9,8 +9,52 @@ Parameters:
   EventDetailType:
     Type: String
     Default: UsuarioCadastrado
+  AllowedOrigins:
+    Type: CommaDelimitedList
+    Default: "http://localhost:3000,http://localhost:5173"
+    Description: Endereços do seu front (CORS). Adicione o domínio de produção.
 
 Resources:
+  # ---------- Autenticação ----------
+  # Guarda e-mail, senha (com hash, gerenciado pela AWS), verificação de e-mail e recuperação de senha.
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    DeletionPolicy: Retain          # não apaga as contas se a stack for removida/recriada
+    UpdateReplacePolicy: Retain
+    Properties:
+      UserPoolName: !Sub ${AWS::StackName}-usuarios
+      UsernameAttributes: [email]   # login com e-mail
+      AutoVerifiedAttributes: [email]
+      Schema:
+        - Name: email
+          Required: true
+          Mutable: true
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireLowercase: true
+          RequireUppercase: true
+          RequireNumbers: true
+          RequireSymbols: false
+      AccountRecoverySetting:
+        RecoveryMechanisms:
+          - Name: verified_email
+            Priority: 1
+
+  # "App" que o front usa para fazer login. Sem secret porque roda no navegador.
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      UserPoolId: !Ref UserPool
+      GenerateSecret: false
+      ExplicitAuthFlows:
+        - ALLOW_USER_SRP_AUTH             # login do front (Amplify)
+        - ALLOW_REFRESH_TOKEN_AUTH        # renovar o token sem pedir senha de novo
+        - ALLOW_ADMIN_USER_PASSWORD_AUTH  # só com credenciais IAM: usado pelos smoke tests
+      PreventUserExistenceErrors: ENABLED
+      EnableTokenRevocation: true
+
+  # ---------- Dados ----------
   UsuariosCnpjTable:
     Type: AWS::DynamoDB::Table
     DeletionPolicy: Retain
@@ -18,7 +62,7 @@ Resources:
     Properties:
       BillingMode: PAY_PER_REQUEST
       AttributeDefinitions:
-        - AttributeName: user_id
+        - AttributeName: user_id      # = "sub" do Cognito
           AttributeType: S
       KeySchema:
         - AttributeName: user_id
@@ -29,6 +73,86 @@ Resources:
     Properties:
       MessageRetentionPeriod: 1209600
 
+  # ---------- API ----------
+  # URL pública que o front chama. Toda rota exige o token do Cognito (header Authorization).
+  CadastroApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      Auth:
+        DefaultAuthorizer: CognitoAuthorizer
+        Authorizers:
+          CognitoAuthorizer:
+            IdentitySource: $request.header.Authorization
+            JwtConfiguration:
+              issuer: !Sub https://cognito-idp.${AWS::Region}.amazonaws.com/${UserPool}
+              audience:
+                - !Ref UserPoolClient
+      CorsConfiguration:
+        AllowOrigins: !Ref AllowedOrigins
+        AllowMethods: [GET, POST, PATCH, OPTIONS]
+        AllowHeaders: [content-type, authorization]
+      DefaultRouteSettings:      # limita abuso do endpoint público
+        ThrottlingBurstLimit: 20
+        ThrottlingRateLimit: 10
+
+  # POST /cadastro: recebe o CNPJ e dispara a consulta em segundo plano
+  CadastroFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: cadastro.handler
+      Runtime: python3.13
+      Architectures: [arm64]
+      MemorySize: 256
+      Timeout: 10
+      Environment:
+        Variables:
+          EVENT_SOURCE: !Ref EventSource
+          EVENT_DETAIL_TYPE: !Ref EventDetailType
+      Policies:
+        - EventBridgePutEventsPolicy:
+            EventBusName: default
+      Events:
+        Post:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref CadastroApi
+            Method: POST
+            Path: /cadastro
+
+  # GET/PATCH /cadastro/me: o front lê os dados e salva o que o usuário preencheu
+  UsuarioFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: usuario.handler
+      Runtime: python3.13
+      Architectures: [arm64]
+      MemorySize: 256
+      Timeout: 10
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref UsuariosCnpjTable
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref UsuariosCnpjTable
+        - DynamoDBWritePolicy:
+            TableName: !Ref UsuariosCnpjTable
+      Events:
+        Get:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref CadastroApi
+            Method: GET
+            Path: /cadastro/me
+        Patch:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref CadastroApi
+            Method: PATCH
+            Path: /cadastro/me
+
+  # Evento UsuarioCadastrado -> consulta o OpenCNPJ -> grava no DynamoDB
   CnpjLookupFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -61,6 +185,15 @@ Resources:
               detail-type: [!Ref EventDetailType]
 
 Outputs:
+  ApiUrl:
+    Description: "URL base para o front: POST {ApiUrl}, GET/PATCH {ApiUrl}/me"
+    Value: !Sub https://${CadastroApi}.execute-api.${AWS::Region}.amazonaws.com/cadastro
+  UserPoolId:
+    Description: Configuração do login no front (Amplify)
+    Value: !Ref UserPool
+  UserPoolClientId:
+    Description: Configuração do login no front (Amplify)
+    Value: !Ref UserPoolClient
   TableName:
     Value: !Ref UsuariosCnpjTable
   FunctionName:
