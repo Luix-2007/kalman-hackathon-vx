@@ -78,3 +78,14 @@ def test_429_falha_para_retry(app):
     with pytest.raises(app.RetryableError):
         app.handler(ev("u5", "22222222000122"))
     assert item("u5") is None
+
+
+def test_nova_consulta_preserva_dados_do_formulario(app):
+    app.handler(ev("u6", "00000000000191"))
+    boto3.resource("dynamodb").Table("t").update_item(
+        Key={"user_id": "u6"}, UpdateExpression="SET dados = :d",
+        ExpressionAttributeValues={":d": {"telefone": "1199"}})
+    app.handler(ev("u6", "99999999000199"))  # usuário reenviou outro CNPJ
+    i = item("u6")
+    assert i["dados"] == {"telefone": "1199"}
+    assert i["status"] == "nao_encontrado" and "empresa" not in i  # dados antigos da empresa saem

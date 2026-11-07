@@ -66,6 +66,21 @@ def fetch_cnpj(cnpj: str) -> dict | None:
         raise RetryableError(str(exc)) from exc
 
 
+def _save(user_id: str, attrs: dict, remove: tuple[str, ...] = ()) -> None:
+    """Grava só os campos do CNPJ. Usa update_item (e não put_item) para não apagar
+    os campos que o usuário preencheu no formulário (`dados`)."""
+    names = {f"#{k}": k for k in (*attrs, *remove)}  # "status" é palavra reservada no DynamoDB
+    expr = "SET " + ", ".join(f"#{k} = :{k}" for k in attrs)
+    if remove:
+        expr += " REMOVE " + ", ".join(f"#{k}" for k in remove)
+    _table.update_item(
+        Key={"user_id": user_id},
+        UpdateExpression=expr,
+        ExpressionAttributeNames=names,
+        ExpressionAttributeValues={f":{k}": v for k, v in attrs.items()},
+    )
+
+
 def handler(event: dict, context=None) -> dict:
     detail = event.get("detail", event)  # aceita evento do EventBridge ou payload direto
     user_id = str(detail["user_id"])
@@ -74,7 +89,7 @@ def handler(event: dict, context=None) -> dict:
     try:
         cnpj = normalize_cnpj(detail["cnpj"])
     except ValueError:
-        _table.put_item(Item={"user_id": user_id, "cnpj": detail.get("cnpj"), "status": "cnpj_invalido", "consultado_em": now})
+        _save(user_id, {"cnpj": detail.get("cnpj"), "status": "cnpj_invalido", "consultado_em": now}, remove=("empresa",))
         log.warning("user %s: CNPJ inválido %r", user_id, detail.get("cnpj"))
         return {"user_id": user_id, "status": "cnpj_invalido"}
 
@@ -84,9 +99,11 @@ def handler(event: dict, context=None) -> dict:
     else:
         status = "ativa" if str(empresa.get("situacao_cadastral", "")).lower() == "ativa" else "inativa"
 
-    item = {"user_id": user_id, "cnpj": cnpj, "status": status, "consultado_em": now}
+    attrs = {"cnpj": cnpj, "status": status, "consultado_em": now}
     if empresa is not None:
-        item["empresa"] = empresa
-    _table.put_item(Item=item)
+        attrs["empresa"] = empresa
+        _save(user_id, attrs)
+    else:
+        _save(user_id, attrs, remove=("empresa",))
     log.info("user %s: CNPJ %s -> %s", user_id, cnpj, status)
     return {"user_id": user_id, "cnpj": cnpj, "status": status}
