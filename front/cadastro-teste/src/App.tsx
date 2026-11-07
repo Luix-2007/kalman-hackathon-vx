@@ -1,373 +1,689 @@
 import {
+  confirmResetPassword,
   confirmSignUp,
   getCurrentUser,
   resendSignUpCode,
+  resetPassword,
   signIn,
   signOut,
   signUp,
 } from "aws-amplify/auth";
-import { useEffect, useState, type FormEvent } from "react";
-import {
-  aceitarConvite,
-  aguardarConsulta,
-  ApiError,
-  convidar,
-  enviarCnpj,
-  getCadastro,
-  getConvite,
-  getMembros,
-  onRequestLog,
-  recusarConvite,
-  removerMembro,
-  salvarDados,
-  type Cadastro,
-  type Convite,
-  type LogEntry,
-  type Membros,
-} from "./api";
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
+import * as apiReal from "./api";
+import { ApiError, type Cadastro, type Convite, type Membros } from "./api";
 import { CAMPOS } from "./campos";
-import { config, configured } from "./config";
+import { configured } from "./config";
+import { DEMO_EMAIL, demoApi, demoAtivo, demoAuth, demoLogado } from "./demo";
+import { Icone, Marca } from "./identidade/marca";
+import { MotivoAnimado } from "./MotivoAnimado";
 
-// ---------- utilidades ----------
+// ─────────────────────────── integrações (reais ou demonstração) ───────────────────────────
+
+const api = demoAtivo ? demoApi : apiReal;
+
+type Passo = { isSignedIn?: boolean; nextStep: { signInStep?: string; signUpStep?: string; resetPasswordStep?: string } };
+const auth = {
+  entrar: (email: string, senha: string): Promise<Passo> =>
+    demoAtivo ? demoAuth.signIn({ username: email, password: senha }) : signIn({ username: email, password: senha }),
+  criar: (email: string, senha: string): Promise<Passo> =>
+    demoAtivo
+      ? demoAuth.signUp({})
+      : signUp({ username: email, password: senha, options: { userAttributes: { email } } }),
+  confirmar: (email: string, codigo: string): Promise<unknown> =>
+    demoAtivo ? demoAuth.confirmSignUp({ username: email, confirmationCode: codigo }) : confirmSignUp({ username: email, confirmationCode: codigo }),
+  reenviar: (email: string): Promise<unknown> => (demoAtivo ? demoAuth.resendSignUpCode({}) : resendSignUpCode({ username: email })),
+  esqueci: (email: string): Promise<Passo> => (demoAtivo ? demoAuth.resetPassword({}) : resetPassword({ username: email })),
+  redefinir: (email: string, codigo: string, senha: string): Promise<unknown> =>
+    demoAtivo
+      ? demoAuth.confirmResetPassword({ username: email, confirmationCode: codigo, newPassword: senha })
+      : confirmResetPassword({ username: email, confirmationCode: codigo, newPassword: senha }),
+  sair: (): Promise<void> => (demoAtivo ? Promise.resolve() : signOut()),
+};
+
+// Vindo da landing: ?criar abre "Criar conta" e ?cnpj= já preenche o CNPJ.
+const PARAMS = new URLSearchParams(location.search);
+
+// CNPJ informado ao criar a conta: fica guardado até o e-mail ser confirmado e a consulta sair.
+const CHAVE_CNPJ = "kalman:cnpj-da-conta";
+const lerCnpjPendente = () => { try { return localStorage.getItem(CHAVE_CNPJ) || ""; } catch { return ""; } };
+const guardarCnpjPendente = (v: string | null) => {
+  try { if (v) localStorage.setItem(CHAVE_CNPJ, v); else localStorage.removeItem(CHAVE_CNPJ); } catch { /* sem storage: segue sem */ }
+};
+
+/** Segundos de espera antes de poder pedir outro código (o Cognito limita envios). */
+const ESPERA_REENVIO = 30;
+
+// ─────────────────────────── utilidades ───────────────────────────
 
 const MENSAGENS: Record<string, string> = {
   NotAuthorizedException: "E-mail ou senha incorretos.",
   UserNotFoundException: "E-mail ou senha incorretos.",
-  UsernameExistsException: "Já existe uma conta com esse e-mail. Use \"Entrar\".",
-  InvalidPasswordException: "Senha fraca: mínimo de 8 caracteres, com maiúscula, minúscula e número.",
-  CodeMismatchException: "Código incorreto.",
+  UsernameExistsException: "Já existe uma conta com esse e-mail. Entre com ela.",
+  InvalidPasswordException: "A senha não atende aos critérios.",
+  CodeMismatchException: "Código incorreto. Confira o e-mail mais recente.",
   ExpiredCodeException: "Código expirado. Peça um novo.",
-  LimitExceededException: "Muitas tentativas. Espere alguns minutos.",
+  LimitExceededException: "Muitas tentativas. Espere alguns minutos e tente de novo.",
+  TooManyRequestsException: "Muitas tentativas. Espere alguns minutos e tente de novo.",
+  TooManyFailedAttemptsException: "Muitas tentativas. Espere alguns minutos e tente de novo.",
+  CodeDeliveryFailureException: "Não conseguimos enviar o e-mail. Tente de novo em instantes.",
+  UserNotConfirmedException: "Confirme seu e-mail antes de entrar.",
+  InvalidParameterException: "Não foi possível concluir. Confira os dados e tente de novo.",
 };
-
+/** Primeira letra maiúscula e ponto final: as mensagens da API vêm em minúsculas. */
+const frase = (s: string) => {
+  const t = s.trim();
+  return t ? t[0].toUpperCase() + t.slice(1) + (/[.!?…]$/.test(t) ? "" : ".") : t;
+};
 function mensagemDeErro(err: unknown): string {
-  if (err instanceof ApiError) return err.status ? `${err.message} (HTTP ${err.status})` : err.message;
+  if (err instanceof ApiError && err.status === 0) return "Sem conexão com o servidor. Confira a internet e tente de novo.";
+  if (err instanceof ApiError) return frase(err.message);
   const e = err as { name?: string; message?: string };
-  return MENSAGENS[e.name ?? ""] ?? e.message ?? String(err);
+  return MENSAGENS[e.name ?? ""] ?? frase(e.message ?? String(err));
 }
+const statusDoErro = (err: unknown) => (err as { status?: number }).status;
 
-function formatCnpj(cnpj: string | null) {
-  if (!cnpj || !/^[0-9A-Z]{12}\d{2}$/.test(cnpj)) return cnpj ?? "";
-  return `${cnpj.slice(0, 2)}.${cnpj.slice(2, 5)}.${cnpj.slice(5, 8)}/${cnpj.slice(8, 12)}-${cnpj.slice(12)}`;
+const soDigitos = (v: string) => v.replace(/\D/g, "");
+function mascaraCnpj(v: string) {
+  const d = soDigitos(v).slice(0, 14);
+  if (d.length <= 2) return d;
+  if (d.length <= 5) return `${d.slice(0, 2)}.${d.slice(2)}`;
+  if (d.length <= 8) return `${d.slice(0, 2)}.${d.slice(2, 5)}.${d.slice(5)}`;
+  if (d.length <= 12) return `${d.slice(0, 2)}.${d.slice(2, 5)}.${d.slice(5, 8)}/${d.slice(8)}`;
+  return `${d.slice(0, 2)}.${d.slice(2, 5)}.${d.slice(5, 8)}/${d.slice(8, 12)}-${d.slice(12)}`;
 }
+/** Dígitos verificadores do CNPJ numérico. */
+function cnpjValido(v: string) {
+  const d = soDigitos(v);
+  if (d.length !== 14 || /^(\d)\1+$/.test(d)) return false;
+  const dv = (base: string) => {
+    let soma = 0, peso = base.length - 7;
+    for (const c of base) { soma += +c * peso--; if (peso < 2) peso = 9; }
+    const r = soma % 11;
+    return r < 2 ? 0 : 11 - r;
+  };
+  return dv(d.slice(0, 12)) === +d[12] && dv(d.slice(0, 13)) === +d[13];
+}
+const emailValido = (v: string) => /^\S+@\S+\.\S+$/.test(v);
+const formatCnae = (c: string) => { const d = soDigitos(c); return d.length === 7 ? `${d.slice(0, 4)}-${d.slice(4, 5)}/${d.slice(5)}` : c; };
+const MINUSCULAS = new Set(["de", "da", "do", "das", "dos", "e"]);
+const titulo = (s?: string | null) =>
+  (s ?? "").toLowerCase().replace(/\s+/g, " ").trim().split(" ")
+    .map((p, i) => {
+      if (/^([a-z]\.){1,3}[a-z]?\.?$|^(ltda|me|epp|eireli|s\/a)\.?$/.test(p)) return p.toUpperCase(); // S.A., LTDA, ME
+      return i > 0 && MINUSCULAS.has(p) ? p : p.charAt(0).toUpperCase() + p.slice(1);
+    }).join(" ");
+const dataBR = (iso?: string | null) => (iso ? iso.slice(0, 10).split("-").reverse().join("/") : "");
+const dataDeEpoch = (s: number) => new Date(s * 1000).toLocaleDateString("pt-BR");
 
-const STATUS: Record<Cadastro["status"], { texto: string; cor: string }> = {
-  processando: { texto: "Consultando…", cor: "aviso" },
-  ativa: { texto: "Ativa", cor: "ok" },
-  inativa: { texto: "Inativa na Receita", cor: "aviso" },
-  nao_encontrado: { texto: "CNPJ não encontrado", cor: "erro" },
+const CRITERIOS: { texto: string; ok: (s: string) => boolean }[] = [
+  { texto: "8 caracteres", ok: (s) => s.length >= 8 },
+  { texto: "maiúscula", ok: (s) => /[A-Z]/.test(s) },
+  { texto: "minúscula", ok: (s) => /[a-z]/.test(s) },
+  { texto: "número", ok: (s) => /\d/.test(s) },
+];
+
+/**
+ * Regulador setorial conhecido pelo CNAE (só para mostrar no cartão da empresa). O Kalman lê normas de qualquer
+ * segmento; esta lista só dá nome ao regulador quando ele é óbvio. Sem regulador, o cartão mostra a atividade.
+ */
+const REGULADORES: [prefixo: string, regulador: string][] = [
+  ["351", "ANEEL"], ["06", "ANP"], ["192", "ANP"], ["61", "Anatel"], ["64", "Banco Central"], ["65", "SUSEP"],
+  ["652", "ANS"], ["655", "ANS"], ["212", "Anvisa"], ["50", "ANTAQ"], ["51", "ANAC"], ["36", "ANA"], ["37", "ANA"],
+];
+const minusculaInicial = (s: string) => (/^[A-ZÀ-Ú][a-zà-ú]/.test(s) ? s[0].toLowerCase() + s.slice(1) : s);
+const reguladorDoCnae = (cnae?: string) => {
+  const d = soDigitos(cnae ?? "");
+  return d ? REGULADORES.filter(([p]) => d.startsWith(p)).sort((a, b) => b[0].length - a[0].length)[0]?.[1] ?? null : null;
 };
 
-// ---------- app ----------
+// ─────────────────────────── app ───────────────────────────
 
 export default function App() {
-  const [email, setEmail] = useState<string | null | undefined>(undefined); // undefined = carregando
-  const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [email, setEmail] = useState<string | null | undefined>(demoLogado ? DEMO_EMAIL : demoAtivo ? null : undefined);
 
   useEffect(() => {
-    onRequestLog((entry) => setLogs((l) => [entry, ...l].slice(0, 30)));
-    if (!configured) return;
+    if (!configured || demoAtivo) return;
     getCurrentUser()
       .then((u) => setEmail(u.signInDetails?.loginId ?? u.username))
       .catch(() => setEmail(null));
   }, []);
 
-  if (!configured) {
+  if (!configured && !demoAtivo) {
     return (
-      <main>
-        <h1>Cadastro (teste)</h1>
-        <div className="card erro">
-          Falta o arquivo <code>.env</code>. Na raiz do repositório, rode <code>make front-env</code> e reinicie o
-          <code> make front-dev</code>.
+      <div className="centro">
+        <div className="aviso-config">
+          <Icone className="icone-48" />
+          <h1>Configuração incompleta</h1>
+          <p>Faltam o endereço da API e os dados do login. Veja <code>src/config.ts</code>.</p>
         </div>
-      </main>
+      </div>
     );
   }
-
-  return (
-    <main>
-      <header>
-        <div>
-          <h1>Cadastro (teste)</h1>
-          <p className="sub">Login no Cognito → CNPJ → consulta em segundo plano → formulário → membros</p>
-        </div>
-        {email && (
-          <div className="usuario">
-            <span>{email}</span>
-            <button className="link" onClick={() => signOut().then(() => setEmail(null))}>
-              Sair
-            </button>
-          </div>
-        )}
-      </header>
-
-      {email === undefined && <p className="sub">Carregando…</p>}
-      {email === null && <Login onLogin={setEmail} />}
-      {email && <Cadastrar />}
-
-      <RequestLog logs={logs} />
-      <footer className="sub">
-        API: <code>{config.apiUrl}</code> · User Pool: <code>{config.userPoolId}</code>
-      </footer>
-    </main>
-  );
+  if (email === undefined) return <div className="centro"><Carregando /></div>;
+  if (email === null) return <Acesso onEntrar={setEmail} />;
+  return <Painel email={email} onSair={() => auth.sair().then(() => (demoAtivo ? (location.href = "?demo") : setEmail(null)))} />;
 }
 
-// ---------- 1. login ----------
+// ─────────────────────────── acesso: entrar / criar conta / confirmar / redefinir senha ───────────────────────────
 
-function Login({ onLogin }: { onLogin: (email: string) => void }) {
-  const [modo, setModo] = useState<"entrar" | "criar" | "confirmar">("entrar");
-  const [emailInput, setEmailInput] = useState("");
+type Modo = "entrar" | "criar" | "confirmar" | "esqueci" | "redefinir";
+
+const CABECA: Record<Modo, { titulo: string; texto?: string }> = {
+  entrar: { titulo: "Entrar no Kalman", texto: "Veja as normas e tarefas da sua empresa." },
+  criar: { titulo: "Criar conta no Kalman", texto: "Informe o CNPJ da empresa para ver as normas que valem para ela." },
+  confirmar: { titulo: "Confirme seu e-mail" },
+  esqueci: { titulo: "Redefinir a senha", texto: "Informe o e-mail da conta. Enviamos um código para você criar uma senha nova." },
+  redefinir: { titulo: "Crie uma senha nova" },
+};
+
+function Acesso({ onEntrar }: { onEntrar: (email: string) => void }) {
+  const [modo, setModo] = useState<Modo>(() => (PARAMS.has("criar") || PARAMS.has("cnpj") ? "criar" : "entrar"));
+  const [email, setEmail] = useState("");
   const [senha, setSenha] = useState("");
+  const [senha2, setSenha2] = useState("");
+  const [cnpj, setCnpj] = useState(() => mascaraCnpj(PARAMS.get("cnpj") ?? ""));
   const [codigo, setCodigo] = useState("");
   const [erro, setErro] = useState("");
   const [info, setInfo] = useState("");
   const [ocupado, setOcupado] = useState(false);
+  const [tocou, setTocou] = useState<Record<string, boolean>>({});
+  const [espera, setEspera] = useState(0);
+
+  useEffect(() => {
+    if (espera <= 0) return;
+    const t = setTimeout(() => setEspera((s) => s - 1), 1000);
+    return () => clearTimeout(t);
+  }, [espera]);
+
+  const senhaOk = CRITERIOS.every((c) => c.ok(senha));
+  const cnpjOk = cnpjValido(cnpj);
+  const confereOk = senha2.length > 0 && senha2 === senha;
+  const podeCriar = cnpjOk && emailValido(email) && senhaOk && confereOk;
+  const podeRedefinir = codigo.length === 6 && senhaOk && confereOk;
 
   async function executar(fn: () => Promise<void>) {
+    setErro(""); setInfo(""); setOcupado(true);
+    try { await fn(); } catch (err) { setErro(mensagemDeErro(err)); } finally { setOcupado(false); }
+  }
+
+  const irPara = (m: Modo, manter = false) => {
+    setModo(m); setErro(""); setTocou({}); setCodigo("");
+    if (!manter) setInfo("");
+  };
+
+  const entrar = () => executar(async () => {
+    const r = await auth.entrar(email, senha);
+    if (r.isSignedIn) return onEntrar(email);
+    if (r.nextStep.signInStep === "CONFIRM_SIGN_UP") {
+      await auth.reenviar(email);
+      irPara("confirmar");
+      setEspera(ESPERA_REENVIO);
+      setInfo("Sua conta ainda não foi confirmada. Enviamos um novo código.");
+      return;
+    }
+    throw new Error(`Passo de login não suportado: ${r.nextStep.signInStep}`);
+  });
+
+  function enviar(e: FormEvent) {
+    e.preventDefault();
+    if (modo === "entrar") return entrar();
+
+    if (modo === "criar") {
+      setTocou({ cnpj: true, email: true, senha: true, senha2: true });
+      if (!podeCriar) return;
+      return executar(async () => {
+        guardarCnpjPendente(soDigitos(cnpj));
+        const r = await auth.criar(email, senha);
+        if (r.nextStep.signUpStep === "CONFIRM_SIGN_UP") { irPara("confirmar"); setEspera(ESPERA_REENVIO); }
+        else await entrar();
+      });
+    }
+
+    if (modo === "confirmar") {
+      return executar(async () => {
+        await auth.confirmar(email, codigo);
+        const r = await auth.entrar(email, senha);
+        if (r.isSignedIn) onEntrar(email);
+      });
+    }
+
+    if (modo === "esqueci") {
+      setTocou({ email: true });
+      if (!emailValido(email)) return;
+      return executar(async () => {
+        await auth.esqueci(email);
+        setSenha(""); setSenha2("");
+        irPara("redefinir");
+        setEspera(ESPERA_REENVIO);
+      });
+    }
+
+    // redefinir
+    setTocou({ senha: true, senha2: true });
+    if (!podeRedefinir) return;
+    return executar(async () => {
+      await auth.redefinir(email, codigo, senha);
+      const r = await auth.entrar(email, senha);
+      if (r.isSignedIn) onEntrar(email);
+      else { irPara("entrar"); setInfo("Senha alterada. Entre com a senha nova."); }
+    });
+  }
+
+  const reenviar = () => executar(async () => {
+    if (modo === "redefinir") await auth.esqueci(email);
+    else await auth.reenviar(email);
+    setEspera(ESPERA_REENVIO);
+    setInfo("Código reenviado. Veja também a caixa de spam.");
+  });
+
+  const cabeca = CABECA[modo];
+  const comCodigo = modo === "confirmar" || modo === "redefinir";
+
+  return (
+    <div className="acesso">
+      <aside className="acesso-arte" aria-hidden="true">
+        <Marca escuro className="acesso-marca" />
+        <MotivoAnimado className="motivo" />
+        <div className="acesso-frase">
+          <p className="acesso-titulo">Saiba quais normas afetam <span className="laranja">a sua empresa.</span></p>
+        </div>
+      </aside>
+
+      <main className="acesso-lado">
+        <div className="acesso-topo-movel"><Marca className="acesso-marca-movel" /></div>
+        <form className="acesso-form" onSubmit={enviar} noValidate key={modo}>
+          <div className="acesso-cabeca">
+            <h1>{cabeca.titulo}</h1>
+            {comCodigo ? (
+              <p>
+                {modo === "confirmar" ? "Enviamos um código de 6 dígitos para " : "Digite o código enviado para "}
+                <strong>{email}</strong>{modo === "confirmar" ? "." : " e a senha nova."}
+              </p>
+            ) : (
+              <p>{cabeca.texto}</p>
+            )}
+          </div>
+
+          {modo === "criar" && (
+            <Campo id="cnpj" rotulo="CNPJ da empresa" mono
+              erro={tocou.cnpj && cnpj && !cnpjOk ? "CNPJ inválido. Confira os dígitos." : ""} ok={cnpjOk}>
+              <input id="cnpj" inputMode="numeric" autoComplete="off" placeholder="00.000.000/0000-00" value={cnpj}
+                onChange={(e) => setCnpj(mascaraCnpj(e.target.value))} onBlur={() => setTocou((t) => ({ ...t, cnpj: true }))}
+                aria-invalid={tocou.cnpj && !!cnpj && !cnpjOk} />
+            </Campo>
+          )}
+
+          {(modo === "entrar" || modo === "criar" || modo === "esqueci") && (
+            <Campo id="email" rotulo={modo === "criar" ? "E-mail corporativo" : "E-mail"}
+              erro={modo === "esqueci" && tocou.email && !emailValido(email) ? "Digite um e-mail válido." : ""}>
+              <input id="email" type="email" required value={email} onChange={(e) => setEmail(e.target.value.trim())}
+                autoComplete="username" placeholder="voce@empresa.com.br" autoFocus={modo === "esqueci"} />
+            </Campo>
+          )}
+
+          {comCodigo && (
+            <div className="k-campo">
+              <label htmlFor="codigo">Código</label>
+              <input id="codigo" className="codigo" inputMode="numeric" maxLength={6} required value={codigo}
+                onChange={(e) => setCodigo(soDigitos(e.target.value).slice(0, 6))} autoComplete="one-time-code" autoFocus placeholder="000000" />
+            </div>
+          )}
+
+          {(modo === "entrar" || modo === "criar" || modo === "redefinir") && (
+            <Campo id="senha" rotulo={modo === "redefinir" ? "Senha nova" : "Senha"}>
+              <Senha id="senha" valor={senha} onChange={setSenha} autoComplete={modo === "entrar" ? "current-password" : "new-password"} />
+              {modo !== "entrar" && <ForcaSenha senha={senha} />}
+              {modo === "entrar" && (
+                <button type="button" className="link link-pequeno esqueci" onClick={() => irPara("esqueci")}>Esqueci a senha</button>
+              )}
+            </Campo>
+          )}
+
+          {(modo === "criar" || modo === "redefinir") && (
+            <Campo id="senha2" rotulo={modo === "redefinir" ? "Confirmar senha nova" : "Confirmar senha"}
+              erro={tocou.senha2 && senha2 && !confereOk ? "As senhas não são iguais." : ""} ok={confereOk}>
+              <Senha id="senha2" valor={senha2} onChange={setSenha2} autoComplete="new-password"
+                onBlur={() => setTocou((t) => ({ ...t, senha2: true }))} invalido={tocou.senha2 && !!senha2 && !confereOk} />
+            </Campo>
+          )}
+
+          <Mensagem info={info} erro={erro} />
+
+          <button className="k-btn largo" type="submit"
+            disabled={ocupado || (modo === "criar" && !podeCriar) || (modo === "confirmar" && codigo.length !== 6) || (modo === "redefinir" && !podeRedefinir)}>
+            {ocupado ? "Aguarde…" : {
+              entrar: "Entrar", criar: "Criar conta", confirmar: "Confirmar e entrar", esqueci: "Enviar código", redefinir: "Salvar senha e entrar",
+            }[modo]}
+          </button>
+
+          {comCodigo && (
+            <p className="acesso-troca">
+              Não chegou?{" "}
+              {espera > 0 ? (
+                <span className="k-mono espera">reenviar em {espera} s</span>
+              ) : (
+                <button type="button" className="link" disabled={ocupado} onClick={reenviar}>Reenviar código</button>
+              )}
+            </p>
+          )}
+
+          <p className="acesso-troca">
+            {modo === "entrar" && <>Ainda não tem conta?{" "}<button type="button" className="link" onClick={() => irPara("criar")}>Criar conta</button></>}
+            {modo === "criar" && <>Já tem conta?{" "}<button type="button" className="link" onClick={() => irPara("entrar")}>Entrar</button></>}
+            {modo === "confirmar" && <button type="button" className="link" onClick={() => irPara("criar")}>Usar outro e-mail</button>}
+            {(modo === "esqueci" || modo === "redefinir") && <>Lembrou a senha?{" "}<button type="button" className="link" onClick={() => irPara("entrar")}>Entrar</button></>}
+          </p>
+        </form>
+      </main>
+    </div>
+  );
+}
+
+// ─────────────────────────── painel: convite ou CNPJ → consulta → dados → equipe ───────────────────────────
+
+function Painel({ email, onSair }: { email: string; onSair: () => void }) {
+  const [cadastro, setCadastro] = useState<Cadastro | null | undefined>(undefined);
+  const [convite, setConvite] = useState<Convite | null>(null);
+  const [consultando, setConsultando] = useState(false);
+  const [trocando, setTrocando] = useState(false);
+  const [erro, setErro] = useState("");
+  const iniciou = useRef(false);
+
+  async function consultar(cnpj: string, consultadoAntes: string | null = cadastro?.consultado_em ?? null) {
     setErro("");
-    setInfo("");
-    setOcupado(true);
+    setConsultando(true);
     try {
-      await fn();
+      await api.enviarCnpj(cnpj);
+      const c = await api.aguardarConsulta(consultadoAntes);
+      guardarCnpjPendente(null);
+      setCadastro(c);
+      setTrocando(false);
     } catch (err) {
-      setErro(mensagemDeErro(err));
+      if (statusDoErro(err) === 409) {
+        guardarCnpjPendente(null);
+        setErro(/vinculado/.test((err as Error).message)
+          ? "Este CNPJ já foi cadastrado por outra pessoa da empresa. Peça a ela um convite para a equipe."
+          : mensagemDeErro(err));
+      } else setErro(mensagemDeErro(err));
     } finally {
-      setOcupado(false);
+      setConsultando(false);
     }
   }
 
-  const entrar = () =>
-    executar(async () => {
-      const r = await signIn({ username: emailInput, password: senha });
-      if (r.isSignedIn) return onLogin(emailInput);
-      if (r.nextStep.signInStep === "CONFIRM_SIGN_UP") {
-        await resendSignUpCode({ username: emailInput });
-        setModo("confirmar");
-        setInfo("Sua conta ainda não foi confirmada. Enviamos um novo código para o seu e-mail.");
-        return;
-      }
-      throw new Error(`Passo de login não suportado neste teste: ${r.nextStep.signInStep}`);
-    });
+  /** Lê a organização do usuário; sem organização, procura convite e, se não houver, usa o CNPJ da criação da conta. */
+  async function carregar() {
+    const c = await api.getCadastro();
+    if (c) { setConvite(null); setCadastro(c); return; }
+    // o convite vem antes de decidir a tela: sem isso a tela do CNPJ pisca antes do convite aparecer
+    const cv = await api.getConvite().catch(() => null);
+    setConvite(cv);
+    setCadastro(null);
+    const pendente = lerCnpjPendente();
+    if (!cv && pendente) consultar(pendente, null);
+  }
 
-  function submit(e: FormEvent) {
-    e.preventDefault();
-    if (modo === "entrar") return entrar();
-    if (modo === "criar")
-      return executar(async () => {
-        const r = await signUp({ username: emailInput, password: senha, options: { userAttributes: { email: emailInput } } });
-        if (r.nextStep.signUpStep === "CONFIRM_SIGN_UP") {
-          setModo("confirmar");
-          setInfo("Enviamos um código para o seu e-mail (veja também o spam).");
-        } else {
-          await entrar();
-        }
-      });
-    return executar(async () => {
-      await confirmSignUp({ username: emailInput, confirmationCode: codigo.trim() });
-      const r = await signIn({ username: emailInput, password: senha });
-      if (r.isSignedIn) onLogin(emailInput);
-    });
+  useEffect(() => {
+    if (iniciou.current) return;
+    iniciou.current = true;
+    carregar().catch((e) => { setErro(mensagemDeErro(e)); setCadastro(null); });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const nome = cadastro?.empresa?.nome_fantasia || cadastro?.empresa?.razao_social;
+  let corpo: ReactNode;
+  if (cadastro === undefined) corpo = <div className="centro-area"><Carregando /></div>;
+  else if (consultando) corpo = <Consultando />;
+  else if (!cadastro && convite) corpo = <ConviteRecebido convite={convite} onAceito={() => carregar()} onRecusado={() => setConvite(null)} />;
+  else if (!cadastro || trocando) corpo = <PedirCnpj erro={erro} onConsultar={(c) => consultar(c)} onCancelar={cadastro ? () => { setTrocando(false); setErro(""); } : undefined} />;
+  else corpo = (
+    <Dados cadastro={cadastro} onSalvo={setCadastro} onTrocar={() => setTrocando(true)}
+      onSaiu={() => { setCadastro(null); carregar().catch(() => undefined); }} />
+  );
+
+  return (
+    <div className="painel">
+      <header className="barra">
+        <div className="barra-linha">
+          <a href={demoAtivo ? "?demo=dados" : "/"} aria-label="Kalman"><Marca className="barra-marca" /></a>
+          {nome && !consultando && <span className="barra-empresa">{titulo(nome)}</span>}
+          <div className="barra-direita">
+            <span className="barra-email">{email}</span>
+            <button className="k-btn k-btn--contorno k-btn--sm" type="button" onClick={onSair}>Sair</button>
+          </div>
+        </div>
+      </header>
+      <main className="painel-corpo">{corpo}</main>
+    </div>
+  );
+}
+
+function ConviteRecebido({ convite, onAceito, onRecusado }: { convite: Convite; onAceito: () => void; onRecusado: () => void }) {
+  const [ocupado, setOcupado] = useState(false);
+  const [erro, setErro] = useState("");
+
+  async function executar(fn: () => Promise<unknown>, depois: () => void) {
+    setOcupado(true); setErro("");
+    try { await fn(); depois(); } catch (err) { setErro(mensagemDeErro(err)); } finally { setOcupado(false); }
   }
 
   return (
-    <section className="card">
-      <h2>1. Conta</h2>
-      {modo !== "confirmar" && (
-        <div className="abas">
-          <button className={modo === "entrar" ? "ativa" : ""} onClick={() => setModo("entrar")} type="button">
-            Entrar
+    <section className="centro-area">
+      <div className="convite">
+        <Icone className="icone-48" />
+        <h1>Você foi convidado</h1>
+        <p className="apoio">
+          {convite.convidado_por ? <strong>{convite.convidado_por}</strong> : "O responsável da empresa"} chamou você para acompanhar as normas desta empresa.
+        </p>
+        <div className="convite-empresa k-pontos">
+          <span className="k-rotulo">Empresa</span>
+          <strong className="convite-nome">{convite.razao_social ? titulo(convite.razao_social) : "Empresa sem nome na Receita"}</strong>
+          <span className="k-mono convite-cnpj">{mascaraCnpj(convite.cnpj)}</span>
+        </div>
+        <p className="convite-nota">Como membro, você vê os dados e os alertas da empresa. Só o dono edita. Convite válido até <span className="k-mono">{dataDeEpoch(convite.expira_em)}</span>.</p>
+        <Mensagem erro={erro} />
+        <div className="convite-acoes">
+          <button className="k-btn" type="button" disabled={ocupado} onClick={() => executar(api.aceitarConvite, onAceito)}>
+            {ocupado ? "Aguarde…" : "Aceitar convite"}
           </button>
-          <button className={modo === "criar" ? "ativa" : ""} onClick={() => setModo("criar")} type="button">
-            Criar conta
+          <button className="k-btn k-btn--contorno" type="button" disabled={ocupado} onClick={() => executar(api.recusarConvite, onRecusado)}>
+            Recusar
           </button>
         </div>
-      )}
-      <form onSubmit={submit} className="grid">
-        <label>
-          E-mail
-          <input type="email" required value={emailInput} disabled={modo === "confirmar"}
-            onChange={(e) => setEmailInput(e.target.value)} autoComplete="username" />
-        </label>
-        <label>
-          Senha
-          <input type="password" required minLength={8} value={senha} disabled={modo === "confirmar"}
-            onChange={(e) => setSenha(e.target.value)}
-            autoComplete={modo === "criar" ? "new-password" : "current-password"} />
-          {modo === "criar" && <small>Mínimo de 8 caracteres, com maiúscula, minúscula e número.</small>}
-        </label>
-        {modo === "confirmar" && (
-          <label>
-            Código recebido por e-mail
-            <input inputMode="numeric" required value={codigo} onChange={(e) => setCodigo(e.target.value)}
-              autoComplete="one-time-code" autoFocus />
-          </label>
-        )}
-        {info && <p className="msg info">{info}</p>}
-        {erro && <p className="msg erro">{erro}</p>}
-        <div className="acoes">
-          <button type="submit" disabled={ocupado}>
-            {ocupado ? "Aguarde…" : modo === "entrar" ? "Entrar" : modo === "criar" ? "Criar conta" : "Confirmar e entrar"}
-          </button>
-          {modo === "confirmar" && (
-            <button type="button" className="link" disabled={ocupado}
-              onClick={() => executar(async () => {
-                await resendSignUpCode({ username: emailInput });
-                setInfo("Código reenviado.");
-              })}>
-              Reenviar código
-            </button>
-          )}
+      </div>
+    </section>
+  );
+}
+
+function PedirCnpj({ erro, onConsultar, onCancelar }: { erro: string; onConsultar: (cnpj: string) => void; onCancelar?: () => void }) {
+  const [cnpj, setCnpj] = useState(() => mascaraCnpj(lerCnpjPendente()));
+  const [tocou, setTocou] = useState(false);
+  const ok = cnpjValido(cnpj);
+  return (
+    <section className="centro-area">
+      <form className="pedir" onSubmit={(e) => { e.preventDefault(); setTocou(true); if (ok) onConsultar(soDigitos(cnpj)); }} noValidate>
+        <Icone className="icone-48" />
+        <h1>{onCancelar ? "Trocar o CNPJ" : "Qual é o CNPJ da empresa?"}</h1>
+        <p className="apoio">O perfil sai da Receita Federal. Você só confere.</p>
+        <div className="pedir-linha">
+          <label htmlFor="cnpj-painel" className="sr">CNPJ</label>
+          <input id="cnpj-painel" className="cnpj-grande" inputMode="numeric" autoComplete="off" autoFocus placeholder="00.000.000/0000-00"
+            value={cnpj} onChange={(e) => setCnpj(mascaraCnpj(e.target.value))} aria-invalid={tocou && !ok} />
+          <button className="k-btn" type="submit" disabled={!ok}>Consultar</button>
         </div>
+        <p className="campo-msg" data-erro={(tocou && cnpj && !ok) || erro ? "" : undefined} aria-live="polite">
+          {erro || (tocou && cnpj && !ok ? "CNPJ inválido. Confira os dígitos." : "")}
+        </p>
+        {onCancelar && <button type="button" className="link" onClick={onCancelar}>Voltar aos dados</button>}
       </form>
     </section>
   );
 }
 
-// ---------- 2. CNPJ + 3. formulário + 4. organização ----------
-
-function Cadastrar() {
-  const [cadastro, setCadastro] = useState<Cadastro | null | undefined>(undefined);
-  const [cnpj, setCnpj] = useState("");
-  const [fase, setFase] = useState<"parado" | "enviando" | "aguardando">("parado");
-  const [segundos, setSegundos] = useState(0);
-  const [erro, setErro] = useState("");
-  const souMembro = cadastro?.papel === "membro";
-
-  const recarregar = () =>
-    getCadastro().then(setCadastro).catch((e) => {
-      setErro(mensagemDeErro(e));
-      setCadastro(null);
-    });
-
-  useEffect(() => {
-    recarregar();
-  }, []);
-
-  useEffect(() => {
-    if (fase !== "aguardando") return;
-    setSegundos(0);
-    const t = setInterval(() => setSegundos((s) => s + 1), 1000);
-    return () => clearInterval(t);
-  }, [fase]);
-
-  async function consultar(e: FormEvent) {
-    e.preventDefault();
-    setErro("");
-    try {
-      setFase("enviando");
-      await enviarCnpj(cnpj);
-      setFase("aguardando");
-      setCadastro(await aguardarConsulta(cadastro?.consultado_em ?? null));
-    } catch (err) {
-      setErro(mensagemDeErro(err));
-    } finally {
-      setFase("parado");
-    }
-  }
-
-  if (cadastro === undefined) return <p className="sub">Carregando cadastro…</p>;
-
+function Consultando() {
+  const [s, setS] = useState(0);
+  useEffect(() => { const t = setInterval(() => setS((v) => v + 1), 1000); return () => clearInterval(t); }, []);
   return (
-    <>
-      {cadastro === null && <ConvitePendente onAceito={recarregar} />}
-
-      <section className="card">
-        <h2>2. CNPJ</h2>
-        {souMembro ? (
-          <p className="sub">Você é membro desta organização. Só o dono pode trocar o CNPJ e editar o cadastro.</p>
-        ) : (
-        <form onSubmit={consultar} className="linha">
-          <input placeholder="00.000.000/0001-91" value={cnpj} onChange={(e) => setCnpj(e.target.value)} required
-            disabled={fase !== "parado"} />
-          <button type="submit" disabled={fase !== "parado"}>
-            {fase === "enviando" ? "Enviando…" : fase === "aguardando" ? `Consultando… ${segundos}s` : cadastro ? "Trocar CNPJ" : "Consultar"}
-          </button>
-        </form>
-        )}
-        {fase === "aguardando" && (
-          <p className="sub">POST respondeu 202. Agora o EventBridge chama a Lambda que consulta o OpenCNPJ; o front repete o GET a cada 2s.</p>
-        )}
-        {erro && <p className="msg erro">{erro}</p>}
-        {cadastro && <ResumoEmpresa cadastro={cadastro} />}
-      </section>
-
-      {cadastro && (
-        <Formulario
-          key={cadastro.consultado_em ?? ""} // recarrega o pré-preenchimento após nova consulta
-          cadastro={cadastro}
-          onSalvo={setCadastro}
-          somenteLeitura={souMembro}
-        />
-      )}
-
-      {cadastro && <Organizacao key={cadastro.cnpj} cadastro={cadastro} onSaiu={() => setCadastro(null)} />}
-    </>
-  );
-}
-
-function ConvitePendente({ onAceito }: { onAceito: () => void }) {
-  const [convite, setConvite] = useState<Convite | null>(null);
-  const [ocupado, setOcupado] = useState(false);
-  const [erro, setErro] = useState("");
-
-  useEffect(() => {
-    getConvite().then(setConvite).catch((e) => setErro(mensagemDeErro(e)));
-  }, []);
-
-  async function executar(fn: () => Promise<unknown>, depois: () => void) {
-    setOcupado(true);
-    setErro("");
-    try {
-      await fn();
-      depois();
-    } catch (err) {
-      setErro(mensagemDeErro(err));
-    } finally {
-      setOcupado(false);
-    }
-  }
-
-  if (!convite && !erro) return null;
-  return (
-    <section className="card destaque">
-      <h2>Convite pendente</h2>
-      {convite && (
-        <>
-          <p>
-            <strong>{convite.convidado_por ?? "O dono"}</strong> convidou você para a organização{" "}
-            <strong>{convite.razao_social ?? formatCnpj(convite.cnpj)}</strong> ({formatCnpj(convite.cnpj)}).
-            Como membro, você vê os dados da empresa, mas não edita.
-          </p>
-          <p className="sub">Válido até {new Date(convite.expira_em * 1000).toLocaleString("pt-BR")}.</p>
-          <div className="acoes">
-            <button disabled={ocupado} onClick={() => executar(aceitarConvite, onAceito)}>Aceitar</button>
-            <button className="link" disabled={ocupado} onClick={() => executar(recusarConvite, () => setConvite(null))}>
-              Recusar
-            </button>
-          </div>
-        </>
-      )}
-      {erro && <p className="msg erro">{erro}</p>}
+    <section className="centro-area" aria-live="polite">
+      <div className="consultando">
+        <svg className="consultando-arte" viewBox="0 0 220 80" aria-hidden="true">
+          {[10, 25, 40, 55, 70].map((y) => (
+            <path key={y} d={`M0 ${y} C 50 ${y}, 70 40, 120 40`} fill="none" stroke="#BFD9EA" strokeWidth="1.4" strokeLinecap="round" />
+          ))}
+          <path className="consultando-reta" d="M120 40 L196 40" stroke="#0E1A24" strokeWidth="2.4" strokeLinecap="round" />
+          <circle cx="202" cy="40" r="6" fill="#FF5A1F" className="consultando-ponto" />
+        </svg>
+        <h1>Lendo o CNPJ na Receita</h1>
+        <p className="apoio k-mono">{s} s</p>
+      </div>
     </section>
   );
 }
 
-function Organizacao({ cadastro, onSaiu }: { cadastro: Cadastro; onSaiu: () => void }) {
+// grupos do formulário (as chaves vêm de campos.ts)
+const SECOES: { id: string; nome: string; texto: string; chaves: string[] }[] = [
+  { id: "responsavel", nome: "Responsável", texto: "Quem recebe os alertas.", chaves: ["responsavel_nome", "responsavel_cargo"] },
+  { id: "contato", nome: "Contato", texto: "Para avisos da conta.", chaves: ["email_contato", "telefone", "site"] },
+  { id: "empresa", nome: "Empresa", texto: "Como chamamos a empresa.", chaves: ["nome_fantasia", "funcionarios"] },
+];
+const ENDERECO = ["cep", "logradouro", "numero", "complemento", "bairro", "municipio", "uf"];
+const TITULO_CASE = new Set(["nome_fantasia", "logradouro", "complemento", "bairro", "municipio"]);
+
+function Dados({ cadastro, onSalvo, onTrocar, onSaiu }: {
+  cadastro: Cadastro; onSalvo: (c: Cadastro) => void; onTrocar: () => void; onSaiu: () => void;
+}) {
+  const e = cadastro.empresa;
+  const leitura = cadastro.papel === "membro";
+  const inicial = useMemo(() => Object.fromEntries(CAMPOS.map((c) => {
+    if (c.key in cadastro.dados) return [c.key, String(cadastro.dados[c.key])];
+    const daReceita = c.daReceita?.(e);
+    return [c.key, daReceita ? (TITULO_CASE.has(c.key) ? titulo(daReceita) : daReceita) : ""];
+  })), [cadastro, e]);
+  const [valores, setValores] = useState<Record<string, string>>(inicial);
+  const [editarEndereco, setEditarEndereco] = useState(false);
+  const [salvando, setSalvando] = useState(false);
+  const [msg, setMsg] = useState<{ tipo: "ok" | "erro"; texto: string } | null>(null);
+  const alterado = CAMPOS.some((c) => (valores[c.key] ?? "") !== (inicial[c.key] ?? "")) || Object.keys(cadastro.dados).length === 0;
+
+  const campo = (key: string) => CAMPOS.find((c) => c.key === key);
+  const input = (key: string) => {
+    const c = campo(key);
+    if (!c) return null;
+    const mono = ["cep", "numero", "uf", "telefone", "funcionarios"].includes(key);
+    return (
+      <div key={key} className={`k-campo${mono ? " k-campo--mono" : ""} c-${key}`}>
+        <label htmlFor={`f-${key}`}>{c.label}</label>
+        <input id={`f-${key}`} type={c.type ?? "text"} value={valores[key] ?? ""} readOnly={leitura}
+          placeholder={leitura ? "—" : undefined}
+          onChange={(ev) => { setValores((v) => ({ ...v, [key]: ev.target.value })); setMsg(null); }} />
+      </div>
+    );
+  };
+
+  async function salvar(ev: FormEvent) {
+    ev.preventDefault();
+    if (leitura) return;
+    setSalvando(true); setMsg(null);
+    try {
+      const dados = Object.fromEntries(CAMPOS.map((c) => {
+        const v = (valores[c.key] ?? "").trim();
+        return [c.key, v === "" ? null : c.type === "number" ? Number(v) : v];
+      }));
+      onSalvo(await api.salvarDados(dados));
+      setMsg({ tipo: "ok", texto: `Salvo às ${new Date().toLocaleTimeString("pt-BR", { timeStyle: "short" })}` });
+    } catch (err) {
+      setMsg({ tipo: "erro", texto: mensagemDeErro(err) });
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  const cnae = e.cnaes?.find((c) => c.is_principal);
+  const regulador = reguladorDoCnae(cnae?.codigo ?? (e.cnae_principal as string | undefined));
+  const v = valores;
+  const enderecoResumo = [
+    [v.logradouro, v.numero?.replace(/^0+(?=\d)/, "")].filter(Boolean).join(", "),
+    v.complemento, v.bairro, [v.municipio, v.uf].filter(Boolean).join("/"),
+    v.cep ? `CEP ${soDigitos(v.cep).replace(/(\d{5})(\d{3})/, "$1-$2")}` : "",
+  ].filter(Boolean).join(" · ");
+
+  return (
+    <div className="dados">
+      <section className="empresa k-pontos" aria-label="Empresa">
+        <div className="empresa-topo">
+          <span className="k-rotulo">Receita Federal · {cadastro.status === "ativa" ? "ativa" : cadastro.status.replace("_", " ")}</span>
+          {!leitura && <button type="button" className="link link-claro" onClick={onTrocar}>Trocar CNPJ</button>}
+        </div>
+        <h1 className="empresa-nome">{titulo(e.razao_social)}</h1>
+        <div className="empresa-fichas">
+          <span className="ficha k-mono">{mascaraCnpj(cadastro.cnpj ?? "")}</span>
+          {cnae && <span className="ficha"><span className="k-mono">{formatCnae(cnae.codigo)}</span> {cnae.descricao}</span>}
+          {e.municipio && <span className="ficha">{titulo(e.municipio)}/{e.uf}</span>}
+          {e.data_inicio_atividade && <span className="ficha">desde <span className="k-mono">{dataBR(e.data_inicio_atividade).slice(-4)}</span></span>}
+        </div>
+        <div className="empresa-setor">
+          <span className="setor-ponto" aria-hidden="true" />
+          <span>
+            O Kalman vai ler as normas de <strong>{cnae?.descricao ? minusculaInicial(cnae.descricao) : "sua atividade"}</strong>
+            {regulador ? <> · Diário Oficial e {regulador}</> : <> · Diário Oficial</>}
+          </span>
+        </div>
+      </section>
+
+      {leitura && (
+        <p className="nota-leitura"><span className="k-ponto" aria-hidden="true" /> Você é membro desta empresa: vê os dados, mas só o dono edita.</p>
+      )}
+
+      <form className="secoes" onSubmit={salvar}>
+        {SECOES.map((s) => (
+          <fieldset key={s.id} className="secao">
+            <legend className="sr">{s.nome}</legend>
+            <div className="secao-titulo"><h2>{s.nome}</h2><p>{s.texto}</p></div>
+            <div className="secao-campos">{s.chaves.map(input)}</div>
+          </fieldset>
+        ))}
+        <fieldset className="secao">
+          <legend className="sr">Endereço</legend>
+          <div className="secao-titulo"><h2>Endereço</h2><p>Veio da Receita.</p></div>
+          <div className="secao-campos">
+            {editarEndereco ? (
+              <div className="grade-endereco">{ENDERECO.map(input)}</div>
+            ) : (
+              <div className="resumo-endereco">
+                <span>{enderecoResumo || "Sem endereço na Receita"}</span>
+                {!leitura && <button type="button" className="link" onClick={() => setEditarEndereco(true)}>Corrigir</button>}
+              </div>
+            )}
+          </div>
+        </fieldset>
+
+        {!leitura && (
+          <div className="salvar">
+            {msg && <span className={`salvar-msg ${msg.tipo}`} role="status">{msg.texto}</span>}
+            {!msg && alterado && <span className="salvar-msg">Confira e salve</span>}
+            <button className="k-btn" type="submit" disabled={salvando}>{salvando ? "Salvando…" : "Salvar"}</button>
+          </div>
+        )}
+      </form>
+
+      <Equipe key={cadastro.cnpj} cadastro={cadastro} onSaiu={onSaiu} />
+    </div>
+  );
+}
+
+// ─────────────────────────── equipe: dono, membros e convites ───────────────────────────
+
+function Equipe({ cadastro, onSaiu }: { cadastro: Cadastro; onSaiu: () => void }) {
   const [org, setOrg] = useState<Membros | null>(null);
   const [email, setEmail] = useState("");
   const [ocupado, setOcupado] = useState(false);
   const [msg, setMsg] = useState<{ tipo: "ok" | "erro"; texto: string } | null>(null);
   const souDono = cadastro.papel === "dono";
 
-  const carregar = () => getMembros().then(setOrg).catch((e) => setMsg({ tipo: "erro", texto: mensagemDeErro(e) }));
-  useEffect(() => {
-    carregar();
-  }, []);
+  const carregar = () => api.getMembros().then(setOrg).catch((e) => setMsg({ tipo: "erro", texto: mensagemDeErro(e) }));
+  useEffect(() => { carregar(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function executar(fn: () => Promise<unknown>, ok: string, depois: () => unknown = carregar) {
-    setOcupado(true);
-    setMsg(null);
+    setOcupado(true); setMsg(null);
     try {
       await fn();
       setMsg({ tipo: "ok", texto: ok });
@@ -379,189 +695,138 @@ function Organizacao({ cadastro, onSaiu }: { cadastro: Cadastro; onSaiu: () => v
     }
   }
 
-  function enviarConvite(e: FormEvent) {
+  function convidar(e: FormEvent) {
     e.preventDefault();
-    executar(() => convidar(email.trim()), `Convite criado. Avise ${email.trim()} para criar a conta com esse e-mail.`,
+    const alvo = email.trim().toLowerCase();
+    if (!emailValido(alvo)) { setMsg({ tipo: "erro", texto: "Digite um e-mail válido." }); return; }
+    executar(() => api.convidar(alvo), `Convite criado. Avise ${alvo} para criar a conta com esse e-mail.`,
       () => { setEmail(""); return carregar(); });
   }
 
   return (
-    <section className="card">
-      <h2>4. Organização</h2>
-      <p className="sub">
-        {souDono
-          ? "Você é o dono. Convide pessoas pelo e-mail: elas veem os dados da empresa, mas não editam."
-          : "Você é membro: vê os dados da empresa, mas não edita."}
-      </p>
-      {org && (
-        <table>
-          <tbody>
-            <tr>
-              <td>{org.dono.email ?? org.dono.user_id}</td>
-              <td><span className="badge ok">dono</span></td>
-              <td></td>
-            </tr>
+    <section className="secao equipe" aria-labelledby="t-equipe">
+      <div className="secao-titulo">
+        <h2 id="t-equipe">Equipe</h2>
+        <p>{souDono ? "Quem vê os dados e os alertas desta empresa." : "Quem acompanha esta empresa."}</p>
+      </div>
+      <div className="equipe-corpo">
+        {!org && !msg && <Carregando />}
+        {org && (
+          <ul className="equipe-lista">
+            <li className="pessoa">
+              <span className="pessoa-email">{org.dono.email ?? "Dono"}</span>
+              <span className="papel papel--dono">dono</span>
+              <span className="pessoa-acao" />
+            </li>
             {org.membros.map((m) => (
-              <tr key={m.user_id}>
-                <td>{m.email}</td>
-                <td><span className="badge">membro</span></td>
-                <td>
+              <li className="pessoa" key={m.user_id}>
+                <span className="pessoa-email">{m.email}</span>
+                <span className="papel">membro</span>
+                <span className="pessoa-acao">
                   {souDono && (
-                    <button className="link" disabled={ocupado}
-                      onClick={() => executar(() => removerMembro(m.user_id), `${m.email} removido.`)}>
-                      Remover
-                    </button>
+                    <button type="button" className="link link-pequeno" disabled={ocupado}
+                      onClick={() => executar(() => api.removerMembro(m.user_id), `${m.email} saiu da equipe.`)}>Remover</button>
                   )}
                   {m.user_id === cadastro.user_id && (
-                    <button className="link" disabled={ocupado}
-                      onClick={() => executar(() => removerMembro(m.user_id), "Você saiu da organização.", onSaiu)}>
-                      Sair da organização
-                    </button>
+                    <button type="button" className="link link-pequeno" disabled={ocupado}
+                      onClick={() => executar(() => api.removerMembro(m.user_id), "Você saiu da empresa.", onSaiu)}>Sair da empresa</button>
                   )}
-                </td>
-              </tr>
+                </span>
+              </li>
             ))}
             {org.convites?.map((c) => (
-              <tr key={c.email}>
-                <td>{c.email}</td>
-                <td><span className="badge aviso">convite pendente</span></td>
-                <td>
-                  <button className="link" disabled={ocupado}
-                    onClick={() => executar(() => removerMembro(c.email), "Convite cancelado.")}>
-                    Cancelar
-                  </button>
-                </td>
-              </tr>
+              <li className="pessoa pessoa--pendente" key={c.email}>
+                <span className="pessoa-email">{c.email}</span>
+                <span className="papel papel--pendente">convite até <span className="k-mono">{dataDeEpoch(c.expira_em)}</span></span>
+                <span className="pessoa-acao">
+                  <button type="button" className="link link-pequeno" disabled={ocupado}
+                    onClick={() => executar(() => api.removerMembro(c.email), "Convite cancelado.")}>Cancelar</button>
+                </span>
+              </li>
             ))}
-          </tbody>
-        </table>
-      )}
-      {souDono && (
-        <form onSubmit={enviarConvite} className="linha" style={{ marginTop: 16 }}>
-          <input type="email" required placeholder="pessoa@empresa.com" value={email}
-            onChange={(e) => setEmail(e.target.value)} disabled={ocupado} />
-          <button type="submit" disabled={ocupado}>Convidar</button>
-        </form>
-      )}
-      {msg && <p className={`msg ${msg.tipo}`} style={{ marginTop: 12 }}>{msg.texto}</p>}
+          </ul>
+        )}
+
+        {souDono && (
+          <form className="convidar" onSubmit={convidar} noValidate>
+            <div className="k-campo">
+              <label htmlFor="convidar-email">Convidar pelo e-mail</label>
+              <div className="convidar-linha">
+                <input id="convidar-email" type="email" placeholder="pessoa@empresa.com.br" value={email}
+                  onChange={(e) => { setEmail(e.target.value); setMsg(null); }} disabled={ocupado} autoComplete="off" />
+                <button className="k-btn k-btn--grafite" type="submit" disabled={ocupado || !email.trim()}>Convidar</button>
+              </div>
+            </div>
+            <p className="convidar-nota">Não enviamos e-mail de convite: avise a pessoa para criar a conta com esse endereço. O convite aparece quando ela entrar e vale por 7 dias.</p>
+          </form>
+        )}
+
+        {msg && <p className={`msg ${msg.tipo === "erro" ? "msg-erro" : "msg-info"}`} role={msg.tipo === "erro" ? "alert" : "status"}>{msg.texto}</p>}
+      </div>
     </section>
   );
 }
 
-function ResumoEmpresa({ cadastro }: { cadastro: Cadastro }) {
-  const e = cadastro.empresa;
-  const s = STATUS[cadastro.status];
-  const cnae = e.cnaes?.find((c) => c.is_principal);
+// ─────────────────────────── peças ───────────────────────────
+
+function Campo({ id, rotulo, erro, ok, mono, children }: { id: string; rotulo: string; erro?: string; ok?: boolean; mono?: boolean; children: ReactNode }) {
   return (
-    <div className="resumo">
-      <div className="resumo-topo">
-        <strong>{e.razao_social ?? formatCnpj(cadastro.cnpj)}</strong>
-        <span className={`badge ${s.cor}`}>{s.texto}</span>
-      </div>
-      <dl>
-        <dt>CNPJ</dt><dd>{formatCnpj(cadastro.cnpj)}</dd>
-        {e.natureza_juridica && (<><dt>Natureza jurídica</dt><dd>{e.natureza_juridica}</dd></>)}
-        {cnae && (<><dt>Atividade principal</dt><dd>{cnae.descricao}</dd></>)}
-        {e.porte_empresa && (<><dt>Porte</dt><dd>{e.porte_empresa}</dd></>)}
-        {e.data_inicio_atividade && (<><dt>Início</dt><dd>{e.data_inicio_atividade.split("-").reverse().join("/")}</dd></>)}
-        {e.opcao_simples && (<><dt>Simples / MEI</dt><dd>{e.opcao_simples === "S" ? "Sim" : "Não"} / {e.opcao_mei === "S" ? "Sim" : "Não"}</dd></>)}
-        <dt>Consultado em</dt><dd>{cadastro.consultado_em ? new Date(cadastro.consultado_em).toLocaleString("pt-BR") : "—"}</dd>
-      </dl>
+    <div className={`k-campo${mono ? " k-campo--mono" : ""}`} data-ok={ok || undefined}>
+      <label htmlFor={id}>{rotulo}</label>
+      {children}
+      {erro && <span className="k-campo-msg" data-erro="" role="alert">{erro}</span>}
     </div>
   );
 }
 
-function Formulario({ cadastro, onSalvo, somenteLeitura }: {
-  cadastro: Cadastro;
-  onSalvo: (c: Cadastro) => void;
-  somenteLeitura: boolean;
+/** Campo de senha com o botão de mostrar/ocultar. */
+function Senha({ id, valor, onChange, autoComplete, onBlur, invalido }: {
+  id: string; valor: string; onChange: (v: string) => void; autoComplete: string; onBlur?: () => void; invalido?: boolean;
 }) {
-  const inicial = () =>
-    Object.fromEntries(
-      CAMPOS.map((c) => [c.key, String(cadastro.dados[c.key] ?? c.daReceita?.(cadastro.empresa) ?? "")]),
-    );
-  const [valores, setValores] = useState<Record<string, string>>(inicial);
-  const [salvando, setSalvando] = useState(false);
-  const [msg, setMsg] = useState<{ tipo: "ok" | "erro"; texto: string } | null>(null);
-
-  async function salvar(e: FormEvent) {
-    e.preventDefault();
-    setSalvando(true);
-    setMsg(null);
-    try {
-      const dados = Object.fromEntries(
-        CAMPOS.map((c) => {
-          const v = valores[c.key].trim();
-          return [c.key, v === "" ? null : c.type === "number" ? Number(v) : v]; // vazio apaga o campo
-        }),
-      );
-      onSalvo(await salvarDados(dados));
-      setMsg({ tipo: "ok", texto: "Salvo." });
-    } catch (err) {
-      setMsg({ tipo: "erro", texto: mensagemDeErro(err) });
-    } finally {
-      setSalvando(false);
-    }
-  }
-
-  const grupo = (g: "empresa" | "adicional") =>
-    CAMPOS.filter((c) => c.grupo === g).map((c) => {
-      const salvo = c.key in cadastro.dados;
-      const daReceita = !salvo && c.daReceita?.(cadastro.empresa) !== undefined;
-      return (
-        <label key={c.key}>
-          <span>
-            {c.label} {daReceita && <small className="tag">da Receita</small>}
-          </span>
-          <input type={c.type ?? "text"} value={valores[c.key]} readOnly={somenteLeitura}
-            onChange={(e) => setValores((v) => ({ ...v, [c.key]: e.target.value }))} />
-        </label>
-      );
-    });
-
+  const [ver, setVer] = useState(false);
   return (
-    <section className="card">
-      <h2>3. Formulário</h2>
-      <form onSubmit={salvar}>
-        <h3>Dados da empresa</h3>
-        <div className="grid duas">{grupo("empresa")}</div>
-        <h3>Informações adicionais</h3>
-        <div className="grid duas">{grupo("adicional")}</div>
-        {!somenteLeitura && (
-          <div className="acoes">
-            <button type="submit" disabled={salvando}>{salvando ? "Salvando…" : "Salvar"}</button>
-            {msg && <span className={`msg ${msg.tipo}`}>{msg.texto}</span>}
-          </div>
+    <div className="senha">
+      <input id={id} type={ver ? "text" : "password"} required value={valor} onChange={(e) => onChange(e.target.value)}
+        onBlur={onBlur} autoComplete={autoComplete} aria-invalid={invalido || undefined} spellCheck={false} />
+      <button type="button" className="olho" onClick={() => setVer((v) => !v)} aria-label={ver ? "Ocultar senha" : "Mostrar senha"}
+        aria-pressed={ver} aria-controls={id}>
+        {ver ? (
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M3 3l18 18" /><path d="M10.6 5.1A9.9 9.9 0 0 1 12 5c5 0 9 4.5 10 7-.4 1-1.2 2.3-2.4 3.6M6.4 6.4C4.3 7.8 2.8 9.9 2 12c1 2.5 5 7 10 7 1.9 0 3.6-.6 5-1.5" /><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2" />
+          </svg>
+        ) : (
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M2 12c1-2.5 5-7 10-7s9 4.5 10 7c-1 2.5-5 7-10 7S3 14.5 2 12Z" /><circle cx="12" cy="12" r="3" />
+          </svg>
         )}
-      </form>
-      <details>
-        <summary>Resposta do GET /cadastro/me</summary>
-        <pre>{JSON.stringify(cadastro, null, 2)}</pre>
-      </details>
-    </section>
+      </button>
+    </div>
   );
 }
 
-// ---------- log ----------
-
-function RequestLog({ logs }: { logs: LogEntry[] }) {
-  if (!logs.length) return null;
+/** Força da senha enquanto digita. "Fraca" diz o que falta para passar na regra do Cognito. */
+function ForcaSenha({ senha }: { senha: string }) {
+  if (!senha) return null;
+  const faltam = CRITERIOS.filter((c) => !c.ok(senha)).map((c) => c.texto);
+  const extra = (senha.length >= 12 ? 1 : 0) + (/[^A-Za-z0-9]/.test(senha) ? 1 : 0);
+  const nivel = faltam.length ? 1 : extra === 0 ? 2 : 3;
+  const nome = ["", "Fraca", "Boa", "Forte"][nivel];
   return (
-    <section className="card">
-      <h2>Chamadas à API</h2>
-      <table>
-        <tbody>
-          {logs.map((l) => (
-            <tr key={l.id}>
-              <td className="sub">{l.at}</td>
-              <td><code>{l.method}</code></td>
-              <td><code>/cadastro{l.path === "/" ? "" : l.path}</code></td>
-              <td className={typeof l.status === "number" && l.status < 400 ? "ok" : "erro"}>{l.status}</td>
-              <td className="sub">{l.ms} ms</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </section>
+    <div className="forca" data-nivel={nivel} aria-live="polite">
+      <div className="forca-barra" aria-hidden="true"><i /><i /><i /></div>
+      <span className="forca-texto">
+        <strong>{nome}</strong>
+        {faltam.length > 0 && <> · falta {faltam.join(", ")}</>}
+      </span>
+    </div>
   );
+}
+
+function Mensagem({ info, erro }: { info?: string; erro?: string }) {
+  if (!info && !erro) return null;
+  return <p className={`msg ${erro ? "msg-erro" : "msg-info"}`} role={erro ? "alert" : "status"}>{erro || info}</p>;
+}
+
+function Carregando() {
+  return <span className="carregando" role="status" aria-label="Carregando" />;
 }
