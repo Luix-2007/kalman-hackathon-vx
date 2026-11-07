@@ -210,3 +210,48 @@ def test_revogacao_aprovada_e_rejeicao():
 
 def test_alteracao_de_obrigacao_inexistente_e_ignorada():
     assert r.Matriz().proposta(proposta("alteracao"), HOJE) is None
+
+
+# ---------------------------------------------------------------- linha do tempo e vigência
+
+def test_alteracao_registra_antes_e_depois_e_o_ato():
+    import json as _json
+    m = r.Matriz()
+    m.importacao("C", [LINHA], date(2026, 11, 1), "m.csv")
+    m.proposta(proposta("alteracao", prazo_regra="Até 31/03", fonte_url="https://dou/1", data_ato=date(2026, 11, 7),
+                        trecho_citado="até 31 de março",
+                        prazo_json='[{"unidade": "data_fixa", "referencia": "ano_corrente", "valor": "31/03"}]'), HOJE)
+    h = m.historico[-1]
+    assert h["evento"] == "alteracao" and h["ato_id"] == "ato" and h["ato_url"] == "https://dou/1"
+    assert h["data_ato"] == date(2026, 11, 7) and h["trecho_citado"] == "até 31 de março"
+    alt = {a["campo"]: a for a in _json.loads(h["alteracoes"])}
+    assert set(alt) == {"prazo_json", "prazo_regra", "trecho_citado", "fonte_url", "fonte_ato"}
+    assert "30/04" in alt["prazo_json"]["antes"] and "31/03" in alt["prazo_json"]["depois"]
+    assert alt["prazo_regra"] == {"campo": "prazo_regra", "antes": None, "depois": "Até 31/03"}
+
+
+def test_vigencia_abre_e_fecha_com_as_decisoes():
+    m = r.Matriz()
+    m.importacao("C", [LINHA], date(2026, 11, 1), "m.csv")
+    m.proposta(proposta("alteracao", criticidade="media"), HOJE)
+    # 02:00 UTC de 10/11 ainda é 09/11 em Brasília
+    m.decisao("C", "OBR-1", 2, "aprovar", "dono", datetime(2026, 11, 10, 2))
+    v1, v2 = m.versoes[("C", "OBR-1")]
+    assert (v1["vigente_de"], v1["vigente_ate"]) == (date(2026, 11, 1), date(2026, 11, 9))
+    assert (v2["vigente_de"], v2["vigente_ate"]) == (date(2026, 11, 9), None)
+    assert r.vigente_em(m.versoes[("C", "OBR-1")], date(2026, 11, 5)) is v1
+    assert r.vigente_em(m.versoes[("C", "OBR-1")], date(2026, 11, 9)) is v2
+    assert r.vigente_em(m.versoes[("C", "OBR-1")], date(2026, 10, 1)) is None
+    m.proposta(proposta("revogacao", pid="rev#0"), HOJE)
+    m.decisao("C", "OBR-1", 3, "aprovar", "dono", datetime(2026, 12, 1, 15))
+    assert v2["vigente_ate"] == date(2026, 12, 1) and r.vigente_em(m.versoes[("C", "OBR-1")], date(2026, 12, 2)) is None
+    assert [h["evento"] for h in m.historico] == ["inclusao", "alteracao", "aprovacao", "revogacao", "aprovacao"]
+
+
+def test_rejeicao_nao_mexe_na_vigencia():
+    m = r.Matriz()
+    m.importacao("C", [LINHA], date(2026, 11, 1), "m.csv")
+    m.proposta(proposta("alteracao", criticidade="media"), HOJE)
+    m.decisao("C", "OBR-1", 2, "rejeitar", "dono", datetime(2026, 11, 8, 12))
+    v1, v2 = m.versoes[("C", "OBR-1")]
+    assert v1["vigente"] and v1["vigente_ate"] is None and v2["vigente_de"] is None

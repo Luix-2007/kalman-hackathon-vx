@@ -102,7 +102,7 @@ SCHEMAS: Dict[str, pa.Schema] = {
         ("orgao_sigla", S), ("tema", S), ("aplica_a", LS), ("recorrencia", S), ("periodicidade", S),
         ("prazo_regra", S), ("prazo_json", S), ("area_responsavel", S), ("evidencia", S),
         ("criticidade", S), ("confianca", F64), ("ocorrido_em", TS), ("_arquivo", S), ("_linha", I32),
-        ("valida", B), ("erros", LS),
+        ("valida", B), ("erros", LS), ("data_ato", D),
     ]),
     GOLD_OBRIGACOES: pa.schema([
         ("cnpj", S), ("obrigacao_id", S), ("versao", I32), ("titulo", S), ("fonte_ato", S),
@@ -111,6 +111,7 @@ SCHEMAS: Dict[str, pa.Schema] = {
         ("area_responsavel", S), ("evidencia", S), ("criticidade", S), ("origem", S), ("status", S),
         ("confianca", F64), ("incluida_em", D), ("alterada_por", S), ("vigente", B), ("mudanca", S),
         ("proposta_id", S), ("hash_conteudo", S), ("decidida_por", S), ("decidida_em", TS),
+        ("data_ato", D), ("vigente_de", D), ("vigente_ate", D),
     ]),
     GOLD_TAREFAS: pa.schema([
         ("cnpj", S), ("tarefa_id", S), ("obrigacao_id", S), ("obrigacao_versao", I32), ("unidade_id", S),
@@ -120,6 +121,7 @@ SCHEMAS: Dict[str, pa.Schema] = {
     GOLD_VERSOES: pa.schema([
         ("cnpj", S), ("obrigacao_id", S), ("versao", I32), ("evento", S), ("status", S), ("origem", S),
         ("ocorrido_em", D), ("por", S), ("resumo", S),
+        ("ato_id", S), ("ato_url", S), ("data_ato", D), ("trecho_citado", S), ("alteracoes", S),
     ]),
 }
 
@@ -195,7 +197,16 @@ def ensure_table(catalog, ident: str, lake: str):
     ns = ident.split(".")[0]
     if (ns,) not in catalog.list_namespaces():
         catalog.create_namespace(ns)  # no Glue o database já vem da stack lakehouse-pipeline
-    return catalog.create_table_if_not_exists(ident, schema=SCHEMAS[ident], location=_location(lake, ident))
+    tabela = catalog.create_table_if_not_exists(ident, schema=SCHEMAS[ident], location=_location(lake, ident))
+    # Colunas novas em tabelas que já existem (ex.: a gold criada antes da linha do tempo):
+    # sem isto o overwrite falha por schema diferente.
+    existentes = {f.name for f in tabela.schema().fields}
+    if not set(SCHEMAS[ident].names) <= existentes:
+        with tabela.update_schema() as alteracao:
+            alteracao.union_by_name(SCHEMAS[ident])
+        tabela = catalog.load_table(ident)
+        log.info("%s: colunas novas %s", ident, sorted(set(SCHEMAS[ident].names) - existentes))
+    return tabela
 
 
 def ler(catalog, ident: str, lake: str) -> List[dict]:
@@ -495,6 +506,7 @@ def candidatas(importada: List[dict], propostas: List[dict], perfis: Dict[str, L
                                                  "area_responsavel", "evidencia", "criticidade")},
             "aplica_a": _lista(reg.get("aplica_a")), "confianca": None,
             "ocorrido_em": r["_ingerido_em"], "_arquivo": r["_arquivo"], "_linha": r["_linha"],
+            "data_ato": None,
         })
 
     for r in propostas:
@@ -506,10 +518,15 @@ def candidatas(importada: List[dict], propostas: List[dict], perfis: Dict[str, L
                           "erros": [r["_erro"]], "aplica_a": []})
             continue
         p = json.loads(r["proposta"]) or {}
+        try:
+            data_ato = date.fromisoformat(r["data_publicacao"]) if r.get("data_publicacao") else None
+        except ValueError:
+            data_ato = None
+            base["_erro_data"] = f"data_publicacao inválida ({r['data_publicacao']})"
         tipo = {"nova": "inclusao", "alteracao": "alteracao", "revogacao": "revogacao"}.get(p.get("tipo"))
         prazo = p.get("prazo_json")
         c = {
-            **base, "mudanca": tipo or "inclusao",
+            **base, "data_ato": data_ato, "mudanca": tipo or "inclusao",
             "obrigacao_id": p.get("obrigacao_id_alvo") if tipo in ("alteracao", "revogacao") else _id_llm(base["proposta_id"]),
             "titulo": p.get("titulo"), "fonte_dispositivo": p.get("fonte_dispositivo"),
             "trecho_citado": p.get("trecho_citado"), "orgao_sigla": p.get("orgao_sigla") or r.get("orgao_emissor"),
@@ -535,6 +552,9 @@ def candidatas(importada: List[dict], propostas: List[dict], perfis: Dict[str, L
                          {o for (cn, o) in alvos if cn == cnpj})
         if c.pop("_erro_tipo", None):
             erros.insert(0, "tipo deve ser nova, alteracao ou revogacao")
+        erro_data = c.pop("_erro_data", None)
+        if erro_data:
+            erros.append(erro_data)
         c["valida"], c["erros"] = not erros, erros
     return sorted(saida, key=lambda c: (c["ocorrido_em"], c["_arquivo"], c["_linha"] or 0))
 
