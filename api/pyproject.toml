@@ -1,7 +1,7 @@
 [project]
-name = "cnpj-cadastro"
+name = "api"
 version = "0.1.0"
-description = "Consulta o CNPJ do usuario no OpenCNPJ e salva no DynamoDB"
+description = "Lambdas da API (uma pasta por funcao, cada uma com seu template SAM)"
 requires-python = ">=3.13"
 dependencies = []
 
@@ -13,4 +13,4 @@ dev = [
 ]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["*/tests"]

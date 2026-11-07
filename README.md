@@ -1,6 +1,6 @@
 # kalman-hackathon-vx
 
-## api/cpnj-cadastro
+## api/cnpj-cadastro
 
 Lambda que consulta o CNPJ do usuário no [OpenCNPJ](https://api.opencnpj.org) e salva o resultado no DynamoDB. É disparada por um evento `UsuarioCadastrado` no EventBridge.
 
@@ -22,7 +22,7 @@ make api-clean     # remove .venv e caches
 make test          # testes de todas as partes
 ```
 
-Ou direto na pasta, sem o prefixo: `cd api/cpnj-cadastro && make test`.
+O ambiente Python (`pyproject.toml`, `uv.lock`, `.venv`) fica em `api/` e é compartilhado por todas as lambdas. Cada lambda tem seu `template.yaml` e seu `Makefile` de build/deploy. Ou direto na pasta, sem o prefixo: `cd api && make test`.
 
 ### Evento de entrada
 

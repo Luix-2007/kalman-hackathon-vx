@@ -2,7 +2,7 @@
 # Uso: make <parte>-<alvo>   ex.: make api-test
 # Partes vazias (front, ia, pipeline) entram aqui quando tiverem codigo.
 
-API_DIR := api/cpnj-cadastro
+API_DIR := api
 
 API_TARGETS := install test build deploy clean
 
