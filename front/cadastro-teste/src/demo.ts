@@ -69,6 +69,12 @@ let convite: Convite | null = modo === "convite"
 
 const espera = (ms: number) => new Promise((r) => setTimeout(r, ms));
 let nomeDemo = modo === "membro" || modo === "convite" ? "Bruno Medeiros" : "Ana Ribeiro";
+let emailDemo = DEMO_EMAIL;
+
+/** O CNPJ fixo da demonstração (Light SESA): conferido na hora, com os dados salvos, sem chamar a Receita. */
+export const CNPJ_DEMO = EXEMPLO.cnpj!;
+export const receitaDemo = { razaoSocial: String(light.razao_social ?? ""), municipio: light.municipio as string | undefined,
+  uf: light.uf as string | undefined, situacao: light.situacao_cadastral as string | undefined };
 const erroApi = (status: number, erro: string) => Object.assign(new Error(erro), { status });
 
 export const demoApi = {
@@ -80,7 +86,7 @@ export const demoApi = {
     await espera(400);
   },
   async aguardarConsulta(_antes: string | null): Promise<Cadastro> {
-    await espera(3000);
+    await espera(2200);
     atual = { ...structuredClone(EXEMPLO), dados: atual?.dados ?? {}, consultado_em: new Date().toISOString() };
     return structuredClone(atual);
   },
@@ -134,8 +140,11 @@ export const demoAuth = {
     await espera(600);
     return { isSignedIn: true, nextStep: { signInStep: "DONE" } };
   },
-  async signUp(_: unknown) {
+  /** Guarda o nome e o e-mail digitados no cadastro: o painel da gravação mostra quem "criou a conta". */
+  async signUp({ email, nome }: { email?: string; nome?: string }) {
     await espera(700);
+    if (nome) nomeDemo = nome;
+    if (email) emailDemo = email;
     return { nextStep: { signUpStep: "CONFIRM_SIGN_UP" } };
   },
   async confirmSignUp({ confirmationCode }: { username: string; confirmationCode: string }) {
@@ -152,7 +161,7 @@ export const demoAuth = {
   /** Nome da conta de demonstração (muda com updateUserAttribute). */
   async fetchUserAttributes() {
     await espera(200);
-    return { email: DEMO_EMAIL, name: nomeDemo };
+    return { email: emailDemo, name: nomeDemo };
   },
   async updateUserAttribute(nome: string) {
     await espera(400);

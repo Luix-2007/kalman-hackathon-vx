@@ -41,7 +41,7 @@ const auth = {
   /** O nome vai para o atributo padrão `name` do Cognito (opcional e editável no pool; o app client grava). */
   criar: (email: string, senha: string, nome: string): Promise<Passo> =>
     demoAtivo
-      ? demoAuth.signUp({})
+      ? demoAuth.signUp({ email, nome })
       : signUp({ username: email, password: senha, options: { userAttributes: { email, name: nome } } }),
   lerNome: async (): Promise<string> => (demoAtivo ? demoAuth.fetchUserAttributes() : fetchUserAttributes()).then((a) => a.name?.trim() ?? ""),
   salvarNome: async (nome: string): Promise<void> => {

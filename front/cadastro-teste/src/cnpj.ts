@@ -8,6 +8,7 @@
  * Se a OpenCNPJ cair ou demorar, o resultado é "indisponivel" e nada é bloqueado.
  */
 import { useEffect, useRef, useState } from "react";
+import { CNPJ_DEMO, demoAtivo, receitaDemo } from "./demo";
 
 export const soDigitos = (v: string) => v.replace(/\D/g, "");
 
@@ -48,6 +49,11 @@ export function consultarReceita(cnpj: string): Promise<Receita> {
   const pronto = cache.get(d);
   if (pronto) return pronto;
   const p = (async (): Promise<Receita> => {
+    // demonstração gravada: o CNPJ fixo responde na hora, sem depender da internet
+    if (demoAtivo && d === CNPJ_DEMO) {
+      await new Promise((r) => setTimeout(r, 350));
+      return { estado: "encontrado", ...receitaDemo };
+    }
     const controle = new AbortController();
     const relogio = setTimeout(() => controle.abort(), LIMITE_MS);
     try {
