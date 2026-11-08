@@ -216,8 +216,8 @@ const CAMPO: Record<string, string> = {
 const valor = (v: unknown) =>
   v === null || v === undefined || v === "" ? "—" : Array.isArray(v) ? v.join(", ") || "—" : String(v);
 
-function Alteracoes({ itens }: { itens: Alteracao[] }) {
-  const visiveis = itens.filter((a) => !["prazo_json", "fonte_url", "trecho_citado"].includes(a.campo));
+function Alteracoes({ itens }: { itens?: Alteracao[] | null }) {
+  const visiveis = (itens ?? []).filter((a) => !["prazo_json", "fonte_url", "trecho_citado"].includes(a.campo));
   if (!visiveis.length) return null;
   return (
     <table className="historico">
