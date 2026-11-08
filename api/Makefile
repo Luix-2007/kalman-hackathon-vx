@@ -3,7 +3,7 @@
 
 LAMBDAS := cnpj-cadastro matriz chatbot
 
-.PHONY: install test smoke smoke-login seed-aurora integracao clean build deploy
+.PHONY: install test smoke smoke-login seed-aurora integracao chatbot-eval clean build deploy
 
 install:
 	uv sync
@@ -28,6 +28,11 @@ seed-aurora: install
 # Opcoes: make integracao ARGS="--com-llm" (precisa de MODEL_ID no ambiente)
 integracao:
 	uv run --group chatbot python chatbot/tests/integracao_cadastro.py $(ARGS)
+
+# Avaliação do comportamento do agente com o modelo de verdade (Bedrock). Precisa de MODEL_ID no
+# ambiente. Padrão: dados fixos; make chatbot-eval ARGS="--dados-reais" consulta a Aurora no lake.
+chatbot-eval:
+	uv run --group chatbot python chatbot/evals/rodar.py $(ARGS)
 
 clean:
 	rm -rf .venv .pytest_cache

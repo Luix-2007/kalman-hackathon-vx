@@ -4,7 +4,7 @@
 
 API_DIR := api
 
-API_TARGETS := install test smoke smoke-login seed-aurora integracao build deploy clean
+API_TARGETS := install test smoke smoke-login seed-aurora integracao chatbot-eval build deploy clean
 
 FRONT_DIR := front/cadastro-teste
 FRONT_TARGETS := install env dev build check clean
@@ -14,7 +14,7 @@ PIPELINE_TARGETS := install test lint deploy clean \
 	cadastro-deploy cadastro-run cadastro-verify dou-deploy dou-run dou-verify \
 	matriz-deploy matriz-run matriz-verify matriz-fixture matriz-proposta-demo matriz-sync-regras
 
-.PHONY: help test matriz-test matriz-deploy $(addprefix api-,$(API_TARGETS)) $(addprefix front-,$(FRONT_TARGETS)) \
+.PHONY: help test matriz-test matriz-deploy chatbot-deploy chatbot-agent-deploy $(addprefix api-,$(API_TARGETS)) $(addprefix front-,$(FRONT_TARGETS)) \
 	$(addprefix pipeline-,$(PIPELINE_TARGETS))
 
 help:
@@ -25,6 +25,9 @@ help:
 	@echo "  make api-smoke     fluxo completo na stack publicada (AWS)"
 	@echo "  make api-seed-aurora  cria a empresa de teste Aurora na stack publicada (AWS)"
 	@echo "  make api-integracao  cadastro -> lakehouse -> agente do chatbot (AWS, roda o pipeline)"
+	@echo "  make api-chatbot-eval  avalia o agente com o modelo (precisa de MODEL_ID; ARGS=--dados-reais usa o lake)"
+	@echo "  make chatbot-agent-deploy MODEL_ID=...  runtime, role e Guardrail do agente (stack chatbot-agent)"
+	@echo "  make chatbot-deploy  API de entrada do chatbot (stack chatbot-api; implante o agente antes)"
 	@echo "  make api-build     sam build"
 	@echo "  make api-deploy    sam build + sam deploy"
 	@echo "  make api-clean     remove .venv e caches"
@@ -61,3 +64,10 @@ matriz-test:
 
 matriz-deploy:
 	$(MAKE) -C $(API_DIR)/matriz deploy
+
+# Chatbot: o agente (stack chatbot-agent) vai antes da API de entrada (stack chatbot-api)
+chatbot-agent-deploy:
+	$(MAKE) -C $(API_DIR)/chatbot agent-deploy MODEL_ID="$(MODEL_ID)" MEMORY_ID="$(MEMORY_ID)"
+
+chatbot-deploy:
+	$(MAKE) -C $(API_DIR)/chatbot deploy
