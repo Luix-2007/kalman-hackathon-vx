@@ -1,7 +1,7 @@
 # Ambiente Python compartilhado por todas as lambdas desta pasta.
 # Cada lambda (ex.: cnpj-cadastro/) tem seu template.yaml e seu Makefile de build/deploy.
 
-LAMBDAS := cnpj-cadastro matriz
+LAMBDAS := cnpj-cadastro matriz chatbot
 
 .PHONY: install test smoke smoke-login seed-aurora integracao clean build deploy
 
