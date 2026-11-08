@@ -136,3 +136,10 @@ li.evento.rejeicao::before { background: var(--erro); }
 .balao.pensando { color: var(--muted); font-style: italic; }
 .sugestoes { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
 button.chip-botao { background: var(--info-bg); color: var(--text); font-weight: 500; font-size: 13px; padding: 6px 12px; border-radius: 99px; text-align: left; }
+.balao.com-blocos { max-width: 100%; width: 100%; }
+.blocos { display: flex; flex-direction: column; gap: 12px; margin-top: 10px; white-space: normal; }
+.bloco { border-top: 1px solid var(--border); padding-top: 8px; }
+.bloco h4 { margin: 0 0 6px; font-size: 13px; }
+.bloco table { font-size: 13px; }
+.bloco th { text-align: left; font-size: 12px; color: var(--muted); font-weight: 500; padding: 4px 8px 4px 0; }
+.lista-atos { margin: 0; padding-left: 18px; font-size: 13px; display: flex; flex-direction: column; gap: 6px; }

@@ -4,9 +4,10 @@
  */
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { ApiError } from "./api";
-import { enviarMensagem, novaConversa, PROMPT_MAX } from "./chatbot";
+import { BlocosChat } from "./BlocosChat";
+import { enviarMensagem, novaConversa, PROMPT_MAX, type Bloco } from "./chatbot";
 
-type Mensagem = { de: "usuario" | "assistente" | "erro"; texto: string };
+type Mensagem = { de: "usuario" | "assistente" | "erro"; texto: string; blocos?: Bloco[] };
 
 const SUGESTOES = [
   "Quais tarefas estão em risco?",
@@ -34,8 +35,8 @@ export function Chatbot() {
     setMensagens((m) => [...m, { de: "usuario", texto: prompt }]);
     setEnviando(true);
     try {
-      const resposta = await enviarMensagem(prompt, sessao);
-      setMensagens((m) => [...m, { de: "assistente", texto: resposta }]);
+      const { resposta, blocos } = await enviarMensagem(prompt, sessao);
+      setMensagens((m) => [...m, { de: "assistente", texto: resposta, blocos }]);
     } catch (e) {
       setMensagens((m) => [...m, { de: "erro", texto: erroDe(e) }]);
     } finally {
@@ -67,7 +68,10 @@ export function Chatbot() {
         )}
         {mensagens.map((m, i) => (
           // texto puro: o React escapa; nunca dangerouslySetInnerHTML numa resposta de modelo
-          <div key={i} className={`balao ${m.de}`}>{m.texto}</div>
+          <div key={i} className={`balao ${m.de}${m.blocos?.length ? " com-blocos" : ""}`}>
+            {m.texto}
+            {m.blocos && <BlocosChat blocos={m.blocos} />}
+          </div>
         ))}
         {enviando && <div className="balao assistente pensando">Consultando os dados…</div>}
         <div ref={fim} />
