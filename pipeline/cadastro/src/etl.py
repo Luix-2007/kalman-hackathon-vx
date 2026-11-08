@@ -7,22 +7,31 @@ Um script com várias etapas, escolhidas por --STAGE:
     bronze   Landing                         -> Parquet tipado (usuarios_cnpj e socios)
     silver   Bronze                          -> Iceberg, upsert por user_id + checagens
     gold     Silver                          -> Iceberg (empresas_clientes, cadastros_por_status)
-    kb_docs  Gold                            -> um .md por empresa para a Bedrock Knowledge Base
+    embeddings Gold                          -> S3 Vectors (empresas-v1, tipos-referencia-v1)
+    classificar Gold + S3 Vectors           -> Iceberg (classificacao_empresas)
 
 Roda como job AWS Glue Python Shell (Python 3.9). O DuckDB é a engine de
 processamento e o PyIceberg grava as tabelas Iceberg no Glue Data Catalog.
 Os caminhos funcionam com s3:// (no Glue) e com pastas locais (nos testes).
 
 Argumentos (formato do Glue: --CHAVE valor):
-    --STAGE       landing | bronze | silver | gold | kb_docs
+    --STAGE       landing | bronze | silver | gold | embeddings | classificar
     --LAKE_URI    s3://bucket-do-lake  (ou pasta local)
     --RUN_DATE    AAAA-MM-DD
     --EXPORT_ARN  ARN do export do DynamoDB (só na landing)
     --REGION      região AWS
+    --VECTOR_BUCKET  bucket do S3 Vectors (embeddings e classificar)
+    --TAXONOMIA_URI  tipos de empresa (padrão: <LAKE_URI>/artefatos/cadastro/tipos_empresa.json;
+                     o Makefile envia config/tipos_empresa.json para lá)
+    --LIMIAR_MIN, --MARGEM_MIN  quando a classificação fica "indefinido" e vai para revisão
+
+Os tipos de empresa (config/tipos_empresa.json) também servem ao passo de propostas do DOU
+(ia/propostas): cada tipo traz as consultas e os órgãos típicos daquele tipo de empresa.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -42,6 +51,7 @@ SILVER_USUARIOS = "silver_db.usuarios_cnpj"
 SILVER_SOCIOS = "silver_db.socios"
 GOLD_EMPRESAS = "gold_db.empresas_clientes"
 GOLD_STATUS = "gold_db.cadastros_por_status"
+GOLD_CLASSIFICACAO = "gold_db.classificacao_empresas"
 
 TS = pa.timestamp("us", tz="UTC")
 
@@ -57,6 +67,14 @@ SCHEMAS: Dict[str, pa.Schema] = {
         ("qtd_socios", pa.int32()),
         ("empresa_raw", pa.string()),
         ("_row_hash", pa.string()),
+        ("cnae_principal", pa.string()),
+        ("cnae_principal_descricao", pa.string()),
+        ("cnaes_secundarios_descricao", pa.string()),
+        ("nome_fantasia", pa.string()),
+        ("natureza_juridica", pa.string()),
+        ("porte_empresa", pa.string()),
+        ("uf", pa.string()),
+        ("municipio", pa.string()),
         ("_ingested_at", TS),
         ("_carga_dt", pa.string()),
     ]),
@@ -76,11 +94,31 @@ SCHEMAS: Dict[str, pa.Schema] = {
         ("capital_social", pa.decimal128(20, 2)),
         ("qtd_socios", pa.int32()),
         ("consultado_em", TS),
+        ("cnae_principal", pa.string()),
+        ("cnae_principal_descricao", pa.string()),
+        ("cnaes_secundarios_descricao", pa.string()),
+        ("nome_fantasia", pa.string()),
+        ("natureza_juridica", pa.string()),
+        ("porte_empresa", pa.string()),
+        ("uf", pa.string()),
+        ("municipio", pa.string()),
     ]),
     GOLD_STATUS: pa.schema([
         ("dia", pa.date32()),
         ("status", pa.string()),
         ("cadastros", pa.int64()),
+    ]),
+    GOLD_CLASSIFICACAO: pa.schema([
+        ("user_id", pa.string()),
+        ("tipo_empresa", pa.string()),
+        ("score", pa.float32()),
+        ("segundo_tipo", pa.string()),
+        ("margem", pa.float32()),
+        ("revisar", pa.bool_()),
+        ("metodo", pa.string()),
+        ("modelo_embedding", pa.string()),
+        ("versao_taxonomia", pa.string()),
+        ("classificado_em", TS),
     ]),
 }
 
@@ -97,10 +135,6 @@ def landing_uri(lake: str, dt: str) -> str:
 
 def bronze_uri(lake: str, tabela: str, dt: str) -> str:
     return f"{lake}/bronze/{tabela}/dt={dt}/data.parquet"
-
-
-def kb_dir(lake: str) -> str:
-    return f"{lake}/kb_docs/empresas"
 
 
 def _q(uri: str) -> str:
@@ -195,6 +229,21 @@ def bronze(con: duckdb.DuckDBPyConnection, lake: str, dt: str) -> Dict[str, int]
               item->>'$.empresa.M.capital_social.S', '.', ''), ',', '.')
               AS DECIMAL(20,2))                                   AS capital_social,
             CAST(json_array_length(item->'$.empresa.M.QSA.L') AS INTEGER) AS qtd_socios,
+            CAST(item->>'$.empresa.M.nome_fantasia.S'      AS VARCHAR)        AS nome_fantasia,
+            CAST(item->>'$.empresa.M.natureza_juridica.S'  AS VARCHAR)        AS natureza_juridica,
+            CAST(item->>'$.empresa.M.porte_empresa.S'      AS VARCHAR)        AS porte_empresa,
+            CAST(item->>'$.empresa.M.uf.S'                 AS VARCHAR)        AS uf,
+            CAST(item->>'$.empresa.M.municipio.S'          AS VARCHAR)        AS municipio,
+            (SELECT e->>'$.M.codigo.S'
+             FROM UNNEST(CAST(COALESCE(item->'$.empresa.M.cnaes.L', '[]'::JSON) AS JSON[]))  t(e)
+             WHERE e->>'$.M.is_principal.BOOL' = 'true' LIMIT 1)             AS cnae_principal,
+            (SELECT e->>'$.M.descricao.S'
+             FROM UNNEST(CAST(COALESCE(item->'$.empresa.M.cnaes.L', '[]'::JSON) AS JSON[]))  t(e)
+             WHERE e->>'$.M.is_principal.BOOL' = 'true' LIMIT 1)             AS cnae_principal_descricao,
+            (SELECT string_agg(e->>'$.M.descricao.S', '; ')
+             FROM UNNEST(CAST(COALESCE(item->'$.empresa.M.cnaes.L', '[]'::JSON) AS JSON[]))  t(e)
+             WHERE (e->>'$.M.is_principal.BOOL') <> 'true'
+                OR (e->>'$.M.is_principal.BOOL') IS NULL)                     AS cnaes_secundarios_descricao,
             CAST(item->'$.empresa' AS VARCHAR)                    AS empresa_raw,
             md5(CAST(item AS VARCHAR))                            AS _row_hash,
             _ingested_at
@@ -292,7 +341,9 @@ def gold(con: duckdb.DuckDBPyConnection, catalog, lake: str) -> Dict[str, int]:
 
     empresas = _arrow(con, """
         SELECT user_id, cnpj, razao_social, situacao_cadastral, status,
-               capital_social, qtd_socios, consultado_em
+               capital_social, qtd_socios, consultado_em,
+               cnae_principal, cnae_principal_descricao, cnaes_secundarios_descricao,
+               nome_fantasia, natureza_juridica, porte_empresa, uf, municipio
         FROM usuarios
         WHERE status IN ('ativa', 'inativa')
         ORDER BY user_id
@@ -314,71 +365,335 @@ def gold(con: duckdb.DuckDBPyConnection, catalog, lake: str) -> Dict[str, int]:
     return n
 
 
-# ---------------------------------------------------------------- docs da KB
+# ---------------------------------------------------------------- embedding e classificação
 
-def formata_cnpj(cnpj: Optional[str]) -> str:
-    if not cnpj or len(cnpj) != 14:
-        return cnpj or "não informado"
-    return f"{cnpj[:2]}.{cnpj[2:5]}.{cnpj[5:8]}/{cnpj[8:12]}-{cnpj[12:]}"
-
-
-def formata_reais(valor) -> str:
-    if valor is None:
-        return "não informado"
-    s = f"{valor:,.2f}"
-    return "R$ " + s.replace(",", "_").replace(".", ",").replace("_", ".")
-
-
-def nome_arquivo(user_id: str) -> str:
-    return re.sub(r"[^A-Za-z0-9_-]", "_", user_id)
-
-
-def documento_empresa(e: dict) -> str:
-    """Texto que a Knowledge Base indexa. Sem nomes de sócios (LGPD)."""
-    consultado = e["consultado_em"].strftime("%d/%m/%Y") if e["consultado_em"] else "não informado"
-    linhas = [
-        f"# {e['razao_social'] or 'Empresa sem razão social informada'}",
-        "",
-        f"- Usuário: {e['user_id']}",
-        f"- CNPJ: {formata_cnpj(e['cnpj'])}",
-        f"- Situação cadastral na Receita: {e['situacao_cadastral'] or 'não informada'}",
-        f"- Status no cadastro: {e['status']}",
-        f"- Capital social: {formata_reais(e['capital_social'])}",
-        f"- Quantidade de sócios: {e['qtd_socios'] if e['qtd_socios'] is not None else 'não informada'}",
-        f"- Dados consultados no OpenCNPJ em: {consultado}",
-        "",
-    ]
-    return "\n".join(linhas)
+def validar_taxonomia(t: dict) -> dict:
+    """Confere a forma da taxonomia; levanta ValueError com o motivo."""
+    if not isinstance(t, dict) or not str(t.get("versao") or "").strip():
+        raise ValueError("taxonomia sem versao")
+    tipos = t.get("tipos")
+    if not isinstance(tipos, list) or not tipos:
+        raise ValueError("taxonomia sem tipos")
+    ids = [tp.get("id") for tp in tipos if isinstance(tp, dict)]
+    if len(ids) != len(tipos) or not all(isinstance(i, str) and re.fullmatch(r"[a-z0-9_]+", i) for i in ids):
+        raise ValueError("todo tipo precisa de id em minúsculas, números e _")
+    if len(set(ids)) != len(ids):
+        raise ValueError("ids de tipo repetidos")
+    if "indefinido" in ids:
+        raise ValueError("'indefinido' é reservado para quando a classificação não decide")
+    for tp in tipos:
+        if not str(tp.get("descricao") or "").strip():
+            raise ValueError(f"tipo {tp['id']} sem descricao")
+        if not isinstance(tp.get("exemplos", []), list):
+            raise ValueError(f"tipo {tp['id']}: exemplos deve ser lista")
+    return t
 
 
-def escreve_local(uri: str, texto: str) -> None:
-    _prepara_destino(uri)
-    with open(uri, "w", encoding="utf-8") as f:
-        f.write(texto)
+def carregar_taxonomia(uri: str, s3_client=None) -> dict:
+    """Lê a taxonomia de um caminho local ou s3://bucket/chave."""
+    if uri.startswith("s3://"):
+        import boto3
+        bucket, chave = uri[len("s3://"):].split("/", 1)
+        s3_client = s3_client or boto3.client("s3")
+        texto = s3_client.get_object(Bucket=bucket, Key=chave)["Body"].read().decode("utf-8")
+    else:
+        with open(uri, encoding="utf-8") as f:
+            texto = f.read()
+    return validar_taxonomia(json.loads(texto))
 
 
-def escritor_s3(s3_client) -> Callable[[str, str], None]:
-    def escreve(uri: str, texto: str) -> None:
-        bucket, key = uri[len("s3://"):].split("/", 1)
-        tipo = "application/json" if key.endswith(".json") else "text/markdown"
-        s3_client.put_object(Bucket=bucket, Key=key, Body=texto.encode("utf-8"),
-                             ContentType=f"{tipo}; charset=utf-8")
-    return escreve
+def texto_para_embedding(e: dict) -> str:
+    partes: List[str] = []
+    if e.get("cnae_principal_descricao"):
+        partes.append(f"Atividade principal: {e['cnae_principal_descricao']}.")
+    if e.get("cnaes_secundarios_descricao"):
+        partes.append(f"Atividades secundárias: {e['cnaes_secundarios_descricao']}.")
+    if e.get("nome_fantasia"):
+        partes.append(f"Nome fantasia: {e['nome_fantasia']}.")
+    if e.get("razao_social"):
+        partes.append(f"Razão social: {e['razao_social']}.")
+    if e.get("natureza_juridica"):
+        partes.append(f"Natureza jurídica: {e['natureza_juridica']}.")
+    if e.get("porte_empresa"):
+        partes.append(f"Porte: {e['porte_empresa']}.")
+    if e.get("uf"):
+        partes.append(f"Estado: {e['uf']}.")
+    texto = " ".join(partes)
+    return texto[:8000]
 
 
-def kb_docs(catalog, lake: str, escreve: Callable[[str, str], None] = escreve_local) -> int:
+def texto_hash(texto: str, modelo: str, dimensao: int) -> str:
+    entrada = f"{modelo}:{dimensao}:{texto}"
+    return hashlib.sha256(entrada.encode("utf-8")).hexdigest()
+
+
+# ---- Protocolos ----
+
+try:
+    from typing import Protocol, runtime_checkable
+except ImportError:
+    from typing_extensions import Protocol, runtime_checkable  # type: ignore
+
+
+@runtime_checkable
+class Embedder(Protocol):
+    def embed(self, texto: str) -> List[float]:
+        ...
+
+
+@runtime_checkable
+class VectorStore(Protocol):
+    def get_vectors(self, keys: List[str]) -> Dict[str, Optional[dict]]:
+        ...
+
+    def get_vector_data(self, key: str) -> Optional[List[float]]:
+        ...
+
+    def put_vectors(self, itens: List[dict]) -> None:
+        ...
+
+    def delete_vectors(self, keys: List[str]) -> None:
+        ...
+
+    def list_keys(self) -> List[str]:
+        ...
+
+    def query(self, vetor: List[float], top_k: int, index_name: Optional[str] = None) -> List[dict]:
+        ...
+
+
+# ---- Implementações AWS ----
+
+def _bedrock_config():
+    import botocore.config
+    return botocore.config.Config(retries={"mode": "adaptive", "max_attempts": 10})
+
+
+class BedrockTitanEmbedder:
+    MODELO = "amazon.titan-embed-text-v2:0"
+    DIMENSAO = 1024
+
+    def __init__(self, region: str):
+        import boto3
+        self._client = boto3.client("bedrock-runtime", region_name=region, config=_bedrock_config())
+
+    def embed(self, texto: str) -> List[float]:
+        import json as _json
+        corpo = _json.dumps({"inputText": texto, "dimensions": self.DIMENSAO, "normalize": True})
+        resp = self._client.invoke_model(modelId=self.MODELO, body=corpo,
+                                         contentType="application/json", accept="application/json")
+        return _json.loads(resp["body"].read())["embedding"]
+
+
+class S3VectorsStore:
+    def __init__(self, vector_bucket: str, index_name: str, region: str):
+        import boto3
+        self._client = boto3.client("s3vectors", region_name=region, config=_bedrock_config())
+        self._bucket = vector_bucket
+        self._index = index_name
+
+    def get_vectors(self, keys: List[str]) -> Dict[str, Optional[dict]]:
+        if not keys:
+            return {}
+        resultado: Dict[str, Optional[dict]] = {}
+        for i in range(0, len(keys), 100):
+            lote = keys[i:i + 100]
+            resp = self._client.get_vectors(
+                vectorBucketName=self._bucket,
+                indexName=self._index,
+                keys=list(lote),
+                returnData=False,
+                returnMetadata=True,
+            )
+            for v in resp.get("vectors", []):
+                resultado[v["key"]] = {"metadata": v.get("metadata", {})}
+            for k in lote:
+                if k not in resultado:
+                    resultado[k] = None
+        return resultado
+
+    def get_vector_data(self, key: str) -> Optional[List[float]]:
+        resp = self._client.get_vectors(vectorBucketName=self._bucket, indexName=self._index,
+                                        keys=[key], returnData=True, returnMetadata=False)
+        vecs = resp.get("vectors", [])
+        dado = (vecs[0].get("data") or {}).get("float32") if vecs else None
+        return list(dado) if dado else None
+
+    def put_vectors(self, itens: List[dict]) -> None:
+        if not itens:
+            return
+        for i in range(0, len(itens), 500):
+            lote = itens[i:i + 500]
+            self._client.put_vectors(
+                vectorBucketName=self._bucket,
+                indexName=self._index,
+                vectors=[{"key": it["key"], "data": {"float32": it["data"]},
+                          "metadata": it.get("metadata", {})} for it in lote],
+            )
+
+    def delete_vectors(self, keys: List[str]) -> None:
+        if not keys:
+            return
+        for i in range(0, len(keys), 500):
+            lote = keys[i:i + 500]
+            self._client.delete_vectors(
+                vectorBucketName=self._bucket,
+                indexName=self._index,
+                keys=list(lote),
+            )
+
+    def list_keys(self) -> List[str]:
+        keys: List[str] = []
+        kwargs: Dict[str, str] = {"vectorBucketName": self._bucket, "indexName": self._index}
+        while True:
+            resp = self._client.list_vectors(**kwargs)
+            for v in resp.get("vectors", []):
+                keys.append(v["key"])
+            token = resp.get("nextToken")
+            if not token:
+                break
+            kwargs["nextToken"] = token
+        return keys
+
+    def query(self, vetor: List[float], top_k: int, index_name: Optional[str] = None) -> List[dict]:
+        idx = index_name or self._index
+        resp = self._client.query_vectors(
+            vectorBucketName=self._bucket,
+            indexName=idx,
+            queryVector={"float32": vetor},
+            topK=top_k,
+            returnMetadata=True,
+            returnDistance=True,   # o padrão é false: sem isto a resposta não traz a distância
+        )
+        return [{"key": r["key"], "distance": r["distance"],
+                 "metadata": r.get("metadata", {})} for r in resp.get("vectors", [])]
+
+
+def embeddings(catalog, lake: str, embedder: Embedder, store: VectorStore,
+               ref_store: VectorStore, taxonomia: dict) -> Dict[str, int]:
+    """Vetor de cada empresa da gold (reaproveita o que não mudou) e os vetores de referência
+    dos tipos (refeitos só quando a versão da taxonomia muda)."""
+    versao = validar_taxonomia(taxonomia)["versao"]
+    modelo = BedrockTitanEmbedder.MODELO
+    dimensao = BedrockTitanEmbedder.DIMENSAO
+
     empresas = catalog.load_table(GOLD_EMPRESAS).scan().to_arrow().to_pylist()
-    pasta = kb_dir(lake)
+    keys_gold = {e["user_id"] for e in empresas}
+
+    keys_existentes_lista = store.list_keys()
+    keys_existentes = set(keys_existentes_lista)
+    existentes = store.get_vectors(keys_existentes_lista) if keys_existentes_lista else {}
+
+    embedados = reaproveitados = apagados = 0
+    novos: List[dict] = []
     for e in empresas:
-        base = f"{pasta}/{nome_arquivo(e['user_id'])}.md"
-        escreve(base, documento_empresa(e))
-        escreve(base + ".metadata.json", json.dumps({"metadataAttributes": {
-            "user_id": e["user_id"],
-            "status": e["status"],
-            "situacao_cadastral": e["situacao_cadastral"] or "",
-        }}, ensure_ascii=False))
-    log.info("kb_docs: %d documentos", len(empresas))
-    return len(empresas)
+        uid = e["user_id"]
+        texto = texto_para_embedding(e)
+        thash = texto_hash(texto, modelo, dimensao)
+        meta_atual = (existentes.get(uid) or {}).get("metadata", {})
+        if meta_atual.get("texto_hash") == thash:
+            reaproveitados += 1
+            continue
+        vec = embedder.embed(texto)
+        novos.append({"key": uid, "data": vec, "metadata": {
+            "texto_hash": thash, "cnae_principal": e.get("cnae_principal") or "",
+            "uf": e.get("uf") or "", "status": e.get("status") or ""}})
+        embedados += 1
+
+    store.put_vectors(novos)
+
+    for k in keys_existentes - keys_gold:
+        store.delete_vectors([k])
+        apagados += 1
+
+    refs_existentes = ref_store.list_keys()
+    versao_key = "__versao__"
+    refs_meta = ref_store.get_vectors([versao_key]) if versao_key in refs_existentes else {}
+    versao_atual = ((refs_meta.get(versao_key) or {}).get("metadata") or {}).get("versao")
+    referencias = 0
+    if versao_atual != versao:
+        ref_store.delete_vectors(refs_existentes)
+        novos_refs: List[dict] = []
+        for tipo in taxonomia["tipos"]:
+            tid = tipo["id"]
+            vec_d = embedder.embed(tipo["descricao"])
+            novos_refs.append({"key": f"{tid}#d", "data": vec_d,
+                               "metadata": {"tipo_id": tid, "subtipo": "descricao",
+                                            "versao": versao}})
+            for n, ex in enumerate(tipo.get("exemplos", [])):
+                vec_e = embedder.embed(ex)
+                novos_refs.append({"key": f"{tid}#{n}", "data": vec_e,
+                                   "metadata": {"tipo_id": tid, "subtipo": "exemplo",
+                                                "versao": versao}})
+                referencias += 1
+        novos_refs.append({"key": versao_key,
+                           "data": embedder.embed("versão da taxonomia"),
+                           "metadata": {"versao": versao}})
+        ref_store.put_vectors(novos_refs)
+
+    resultado = {"embedados": embedados, "reaproveitados": reaproveitados,
+                 "apagados": apagados, "referencias": referencias}
+    log.info("embeddings: %s", resultado)
+    return resultado
+
+
+def decidir_tipo(vizinhos: List[dict], limiar_min: float, margem_min: float) -> dict:
+    from collections import defaultdict
+    scores_por_tipo: Dict[str, List[float]] = defaultdict(list)
+    for v in vizinhos:
+        chave = v["key"]
+        if chave == "__versao__":
+            continue
+        tipo_id = chave.split("#")[0]
+        sim = 1.0 - float(v["distance"])
+        scores_por_tipo[tipo_id].append(sim)
+
+    score_final: Dict[str, float] = {}
+    for tid, sims in scores_por_tipo.items():
+        top3 = sorted(sims, reverse=True)[:3]
+        score_final[tid] = sum(top3) / len(top3)
+
+    if not score_final:
+        return {"tipo_empresa": "indefinido", "score": 0.0,
+                "segundo_tipo": "", "margem": 0.0, "revisar": True}
+
+    ordenados = sorted(score_final.items(), key=lambda x: x[1], reverse=True)
+    primeiro_tipo, primeiro_score = ordenados[0]
+    segundo_tipo = ordenados[1][0] if len(ordenados) > 1 else ""
+    segundo_score = ordenados[1][1] if len(ordenados) > 1 else 0.0
+    margem = primeiro_score - segundo_score
+
+    revisar = primeiro_score < limiar_min or margem < margem_min
+    tipo_final = "indefinido" if revisar else primeiro_tipo
+
+    return {"tipo_empresa": tipo_final, "score": float(primeiro_score),
+            "segundo_tipo": segundo_tipo, "margem": float(margem), "revisar": revisar}
+
+
+def classificar(catalog, lake: str, store: VectorStore, ref_store: VectorStore,
+                taxonomia: dict, limiar_min: float = 0.30, margem_min: float = 0.02) -> int:
+    """Tipo de cada empresa da gold pelos vizinhos mais próximos entre os vetores de referência.
+    Empresa sem vetor (embeddings não rodou para ela) fica "indefinido" e vai para revisão."""
+    import datetime as _dt
+
+    versao = validar_taxonomia(taxonomia)["versao"]
+    empresas = catalog.load_table(GOLD_EMPRESAS).scan().to_arrow().to_pylist()
+    agora = _dt.datetime.now(_dt.timezone.utc)
+    linhas_finais: List[dict] = []
+    for e in empresas:
+        uid = e["user_id"]
+        vetor = store.get_vector_data(uid)
+        vizinhos = ref_store.query(vetor, top_k=30) if vetor else []
+        decisao = decidir_tipo(vizinhos, limiar_min, margem_min)
+        linhas_finais.append({
+            "user_id": uid, **decisao, "metodo": "s3vectors_cosine",
+            "modelo_embedding": BedrockTitanEmbedder.MODELO, "versao_taxonomia": versao,
+            "classificado_em": agora,
+        })
+    tabela = pa.Table.from_pylist(linhas_finais, schema=SCHEMAS[GOLD_CLASSIFICACAO])
+    ensure_table(catalog, GOLD_CLASSIFICACAO, lake).overwrite(tabela)
+    log.info("classificar: %d empresas classificadas", len(linhas_finais))
+    return len(linhas_finais)
 
 
 # ---------------------------------------------------------------- entrada do job
@@ -426,8 +741,19 @@ def main(argv: List[str]) -> None:
         silver(con, catalog, lake, args["RUN_DATE"])
     elif stage == "gold":
         gold(con, catalog, lake)
-    elif stage == "kb_docs":
-        kb_docs(catalog, lake, escritor_s3(boto3.client("s3", region_name=region)))
+    elif stage in ("embeddings", "classificar"):
+        vector_bucket = args.get("VECTOR_BUCKET", "")
+        if not vector_bucket:
+            raise SystemExit("faltou --VECTOR_BUCKET")
+        taxonomia = carregar_taxonomia(args.get("TAXONOMIA_URI") or f"{lake}/artefatos/cadastro/tipos_empresa.json",
+                                       boto3.client("s3", region_name=region))
+        store = S3VectorsStore(vector_bucket, "empresas-v1", region)
+        ref = S3VectorsStore(vector_bucket, "tipos-referencia-v1", region)
+        if stage == "embeddings":
+            embeddings(catalog, lake, BedrockTitanEmbedder(region), store, ref, taxonomia)
+        else:
+            classificar(catalog, lake, store, ref, taxonomia,
+                        float(args.get("LIMIAR_MIN", "0.30")), float(args.get("MARGEM_MIN", "0.02")))
     else:
         raise SystemExit(f"--STAGE desconhecido: {stage}")
 

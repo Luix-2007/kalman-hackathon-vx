@@ -49,6 +49,25 @@ Versões: a matriz importada entra aprovada (nova versão só se o conteúdo mud
 entra como `proposta`; a decisão da API aprova (vira vigente; revogação deixa sem vigente) ou
 rejeita.
 
+## Versões e linha do tempo
+
+Cada mudança de conteúdo vira uma nova linha em `gold_db.matriz_obrigacoes` (a anterior nunca é
+apagada), com `data_ato` (publicação do ato que a originou) e o período em que esteve em vigor
+(`vigente_de`, `vigente_ate`: abre na aprovação, fecha quando outra versão é aprovada ou a
+obrigação é revogada). A matriz num dia qualquer:
+
+```sql
+SELECT * FROM gold_db.matriz_obrigacoes
+WHERE cnpj = 'KALMANTESTE100' AND vigente_de <= DATE '2026-11-05'
+  AND (vigente_ate IS NULL OR vigente_ate > DATE '2026-11-05')
+```
+
+`gold_db.matriz_versoes` é a linha do tempo: um evento por inclusão, alteração, revogação,
+aprovação e rejeição, com o ato (`ato_id`, `ato_url`, `data_ato`, `trecho_citado`) e, em
+`alteracoes`, um JSON com cada campo que mudou: `[{"campo": "prazo_regra", "antes": "...", "depois": "..."}]`.
+A API expõe em `GET /linha-do-tempo`. Tabelas criadas antes destas colunas ganham as colunas
+novas sozinhas na próxima execução do job (evolução de schema do Iceberg).
+
 ## Comandos
 
 ```bash

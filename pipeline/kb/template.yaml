@@ -1,0 +1,350 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: 'Job de atualizacao da Bedrock Knowledge Base com documentos das empresas
+  classificadas. Le da Gold do lakehouse-pipeline, grava kb_docs/ no S3 e aciona a
+  ingestao da KB. A KB usa S3 Vectors como backend de vetores.
+
+  '
+Parameters:
+  LakeBucketName:
+    Type: String
+    Description: 'Bucket do lake, criado pelo stack lakehouse-pipeline (output LakeBucketName).
+      O Makefile resolve automaticamente via describe-stacks.
+
+      '
+  ArtifactsBucket:
+    Type: String
+    Default: ''
+    Description: 'Bucket onde o sam deploy coloca o etl_kb.py, para o job baixar o
+      script. Vazio = bucket padrao do SAM.
+
+      '
+  EmbeddingModelId:
+    Type: String
+    Default: amazon.titan-embed-text-v2:0
+    Description: Modelo de embedding da Bedrock KB
+  AlertEmail:
+    Type: String
+    Default: ''
+    Description: E-mail que recebe aviso de falha
+  Schedule:
+    Type: String
+    Default: cron(0 6 * * ? *)
+    Description: Quando rodar, no fuso America/Sao_Paulo (padrao 06:00)
+Conditions:
+  HasAlertEmail:
+    Fn::Not:
+    - Fn::Equals:
+      - Ref: AlertEmail
+      - ''
+  HasArtifactsBucket:
+    Fn::Not:
+    - Fn::Equals:
+      - Ref: ArtifactsBucket
+      - ''
+Resources:
+  KbVectorBucket:
+    Type: AWS::S3Vectors::VectorBucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      VectorBucketName:
+        Fn::Sub: ${AWS::StackName}-kb-vectors
+    Metadata:
+      SamResourceId: KbVectorBucket
+  KbIndex:
+    Type: AWS::S3Vectors::Index
+    Properties:
+      VectorBucketArn:
+        Ref: KbVectorBucket
+      IndexName: kb-empresas-v1
+      DataType: float32
+      Dimension: 1024
+      DistanceMetric: cosine
+      MetadataConfiguration:
+        NonFilterableMetadataKeys:
+        - AMAZON_BEDROCK_TEXT
+        - AMAZON_BEDROCK_METADATA
+    Metadata:
+      SamResourceId: KbIndex
+  KbRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: bedrock.amazonaws.com
+          Action: sts:AssumeRole
+          Condition:
+            StringEquals:
+              aws:SourceAccount:
+                Ref: AWS::AccountId
+      Policies:
+      - PolicyName: kb-access
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: LerKbDocs
+            Effect: Allow
+            Action:
+            - s3:GetObject
+            - s3:ListBucket
+            Resource:
+            - Fn::Sub: arn:${AWS::Partition}:s3:::${LakeBucketName}
+            - Fn::Sub: arn:${AWS::Partition}:s3:::${LakeBucketName}/kb_docs/*
+          - Sid: UsarEmbedding
+            Effect: Allow
+            Action: bedrock:InvokeModel
+            Resource:
+              Fn::Sub:
+              - arn:${Partition}:bedrock:${Region}::foundation-model/${ModelId}
+              - Partition:
+                  Ref: AWS::Partition
+                Region:
+                  Ref: AWS::Region
+                ModelId:
+                  Ref: EmbeddingModelId
+          - Sid: S3VectorsKb
+            Effect: Allow
+            Action:
+            - s3vectors:PutVectors
+            - s3vectors:GetVectors
+            - s3vectors:QueryVectors
+            - s3vectors:ListVectors
+            - s3vectors:DeleteVectors
+            - s3vectors:GetIndex
+            - s3vectors:ListIndexes
+            Resource:
+              Fn::GetAtt:
+              - KbIndex
+              - IndexArn
+    Metadata:
+      SamResourceId: KbRole
+  KnowledgeBase:
+    Type: AWS::Bedrock::KnowledgeBase
+    Properties:
+      Name:
+        Fn::Sub: ${AWS::StackName}-empresas
+      Description: Documentos das empresas cadastradas, classificadas por tipo de
+        atividade.
+      RoleArn:
+        Fn::GetAtt:
+        - KbRole
+        - Arn
+      KnowledgeBaseConfiguration:
+        Type: VECTOR
+        VectorKnowledgeBaseConfiguration:
+          EmbeddingModelArn:
+            Fn::Sub:
+            - arn:${Partition}:bedrock:${Region}::foundation-model/${ModelId}
+            - Partition:
+                Ref: AWS::Partition
+              Region:
+                Ref: AWS::Region
+              ModelId:
+                Ref: EmbeddingModelId
+      StorageConfiguration:
+        Type: S3_VECTORS
+        S3VectorsConfiguration:
+          IndexArn:
+            Fn::GetAtt:
+            - KbIndex
+            - IndexArn
+    Metadata:
+      SamResourceId: KnowledgeBase
+  KbDataSource:
+    Type: AWS::Bedrock::DataSource
+    Properties:
+      KnowledgeBaseId:
+        Ref: KnowledgeBase
+      Name: empresas-lake
+      Description: Documentos md e metadata.json das empresas na Gold
+      DataSourceConfiguration:
+        Type: S3
+        S3Configuration:
+          BucketArn:
+            Fn::Sub: arn:${AWS::Partition}:s3:::${LakeBucketName}
+          InclusionPrefixes:
+          - kb_docs/empresas/
+      VectorIngestionConfiguration:
+        ChunkingConfiguration:
+          ChunkingStrategy: NONE
+      DataDeletionPolicy: RETAIN
+    Metadata:
+      SamResourceId: KbDataSource
+  EtlKbJobRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: glue.amazonaws.com
+          Action: sts:AssumeRole
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole
+      Policies:
+      - PolicyName: kb-etl
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: LerEGravarLake
+            Effect: Allow
+            Action:
+            - s3:GetObject
+            - s3:PutObject
+            - s3:DeleteObject
+            - s3:ListBucket
+            - s3:GetBucketLocation
+            Resource:
+            - Fn::Sub: arn:${AWS::Partition}:s3:::${LakeBucketName}
+            - Fn::Sub: arn:${AWS::Partition}:s3:::${LakeBucketName}/*
+          - Sid: LerScriptDoJob
+            Effect: Allow
+            Action:
+            - s3:GetObject
+            - s3:ListBucket
+            Resource:
+              Fn::If:
+              - HasArtifactsBucket
+              - - Fn::Sub: arn:${AWS::Partition}:s3:::${ArtifactsBucket}
+                - Fn::Sub: arn:${AWS::Partition}:s3:::${ArtifactsBucket}/*
+              - - Fn::Sub: arn:${AWS::Partition}:s3:::aws-sam-cli-managed-default-samclisourcebucket-*
+                - Fn::Sub: arn:${AWS::Partition}:s3:::aws-sam-cli-managed-default-samclisourcebucket-*/*
+          - Sid: CatalogoIceberg
+            Effect: Allow
+            Action:
+            - glue:GetDatabase
+            - glue:GetDatabases
+            - glue:GetTable
+            - glue:GetTables
+            Resource:
+            - Fn::Sub: arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:catalog
+            - Fn::Sub: arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:database/*
+            - Fn::Sub: arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:table/gold_db/*
+          - Sid: AcionarIngestion
+            Effect: Allow
+            Action:
+            - bedrock:StartIngestionJob
+            - bedrock:GetIngestionJob
+            Resource:
+              Fn::Sub: arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:knowledge-base/*
+    Metadata:
+      SamResourceId: EtlKbJobRole
+  EtlKbJob:
+    Type: AWS::Glue::Job
+    Properties:
+      Description: Gera docs da Gold e aciona ingestao da Bedrock Knowledge Base
+      Role:
+        Fn::GetAtt:
+        - EtlKbJobRole
+        - Arn
+      GlueVersion: '3.0'
+      Command:
+        Name: pythonshell
+        PythonVersion: '3.9'
+        ScriptLocation: src/etl_kb.py   # o sam deploy envia para o S3
+      MaxCapacity: 1
+      MaxRetries: 0
+      Timeout: 30
+      ExecutionProperty:
+        MaxConcurrentRuns: 1
+      DefaultArguments:
+        --LAKE_URI:
+          Fn::Sub: s3://${LakeBucketName}
+        --REGION:
+          Ref: AWS::Region
+        --KB_ID:
+          Ref: KnowledgeBase
+        --DS_ID:
+          Ref: KbDataSource
+        --PREFIXOS: kb_docs/empresas/
+        --additional-python-modules: duckdb==1.2.2,pyiceberg[glue]==0.9.1,pyiceberg[pyarrow]==0.9.1,boto3==1.42.97
+    Metadata:
+      SamResourceId: EtlKbJob
+  AlertTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      DisplayName: Pipeline KB empresas
+    Metadata:
+      SamResourceId: AlertTopic
+  AlertEmailSubscription:
+    Type: AWS::SNS::Subscription
+    Condition: HasAlertEmail
+    Properties:
+      TopicArn:
+        Ref: AlertTopic
+      Protocol: email
+      Endpoint:
+        Ref: AlertEmail
+    Metadata:
+      SamResourceId: AlertEmailSubscription
+  KbStateMachine:
+    Type: AWS::Serverless::StateMachine
+    Properties:
+      Type: STANDARD
+      DefinitionUri: statemachine/kb.asl.json
+      DefinitionSubstitutions:
+        GlueJobName:
+          Ref: EtlKbJob
+        AlertTopicArn:
+          Ref: AlertTopic
+      Policies:
+      - Statement:
+        - Sid: RodarJobGlue
+          Effect: Allow
+          Action:
+          - glue:StartJobRun
+          - glue:GetJobRun
+          - glue:GetJobRuns
+          - glue:BatchStopJobRun
+          Resource:
+            Fn::Sub: arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:job/${EtlKbJob}
+        - Sid: Avisar
+          Effect: Allow
+          Action: sns:Publish
+          Resource:
+            Ref: AlertTopic
+      Events:
+        TodoDia:
+          Type: ScheduleV2
+          Properties:
+            ScheduleExpression:
+              Ref: Schedule
+            ScheduleExpressionTimezone: America/Sao_Paulo
+            Input: '{}'
+    Metadata:
+      SamResourceId: KbStateMachine
+Outputs:
+  KbId:
+    Value:
+      Ref: KnowledgeBase
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-KbId
+  DsId:
+    Value:
+      Ref: KbDataSource
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-DsId
+  KbIndexArn:
+    Value:
+      Fn::GetAtt:
+      - KbIndex
+      - IndexArn
+  KbVectorBucketName:
+    Value:
+      Fn::Sub: ${AWS::StackName}-kb-vectors
+  GlueJobName:
+    Value:
+      Ref: EtlKbJob
+  StateMachineArn:
+    Value:
+      Ref: KbStateMachine
+  AlertTopicArn:
+    Value:
+      Ref: AlertTopic

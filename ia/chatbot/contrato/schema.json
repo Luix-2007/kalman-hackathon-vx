@@ -1,0 +1,730 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Resposta de POST /chatbot/mensagens",
+  "description": "resposta é um resumo curto escrito pelo modelo (texto puro: nunca renderize como HTML); blocos são os dados que a tela desenha, montados em código a partir das consultas. Pode vir sem blocos (recusa, pergunta sem dado, conversa).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "resposta",
+    "blocos"
+  ],
+  "properties": {
+    "resposta": {
+      "type": "string"
+    },
+    "blocos": {
+      "type": "array",
+      "maxItems": 8,
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "tipo",
+              "parametros",
+              "itens"
+            ],
+            "description": "Dados da empresa (1 item)",
+            "properties": {
+              "tipo": {
+                "const": "empresa"
+              },
+              "parametros": {
+                "type": "object",
+                "properties": {
+                  "em_risco": {
+                    "type": "boolean"
+                  },
+                  "obrigacao_id": {
+                    "type": "string"
+                  }
+                }
+              },
+              "itens": {
+                "type": "array",
+                "maxItems": 50,
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "cnpj",
+                    "razao_social",
+                    "situacao_cadastral",
+                    "status_cadastro",
+                    "capital_social",
+                    "qtd_socios",
+                    "atos_no_dou",
+                    "tipos_de_ato",
+                    "ato_mais_recente"
+                  ],
+                  "properties": {
+                    "cnpj": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "razao_social": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "situacao_cadastral": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "status_cadastro": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "capital_social": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "qtd_socios": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "atos_no_dou": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "tipos_de_ato": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "ato_mais_recente": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "tipo",
+              "parametros",
+              "itens"
+            ],
+            "description": "Atos do DOU sobre a empresa, do mais recente ao mais antigo",
+            "properties": {
+              "tipo": {
+                "const": "atos"
+              },
+              "parametros": {
+                "type": "object",
+                "properties": {
+                  "em_risco": {
+                    "type": "boolean"
+                  },
+                  "obrigacao_id": {
+                    "type": "string"
+                  }
+                }
+              },
+              "itens": {
+                "type": "array",
+                "maxItems": 50,
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "data_publicacao",
+                    "tipo",
+                    "orgao",
+                    "identifica",
+                    "ementa",
+                    "url_pdf"
+                  ],
+                  "properties": {
+                    "data_publicacao": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "tipo": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "orgao": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "identifica": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "ementa": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "url_pdf": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "link http(s); o front só deve abrir links http(s)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "tipo",
+              "parametros",
+              "itens"
+            ],
+            "description": "Versão em vigor de cada obrigação e propostas aguardando decisão",
+            "properties": {
+              "tipo": {
+                "const": "obrigacoes"
+              },
+              "parametros": {
+                "type": "object",
+                "properties": {
+                  "em_risco": {
+                    "type": "boolean"
+                  },
+                  "obrigacao_id": {
+                    "type": "string"
+                  }
+                }
+              },
+              "itens": {
+                "type": "array",
+                "maxItems": 50,
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "obrigacao_id",
+                    "versao",
+                    "titulo",
+                    "orgao_sigla",
+                    "tema",
+                    "recorrencia",
+                    "periodicidade",
+                    "prazo_regra",
+                    "area_responsavel",
+                    "criticidade",
+                    "status",
+                    "vigente",
+                    "data_ato",
+                    "vigente_de",
+                    "vigente_ate"
+                  ],
+                  "properties": {
+                    "obrigacao_id": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "versao": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "titulo": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "orgao_sigla": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "tema": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "recorrencia": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "periodicidade": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "prazo_regra": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "area_responsavel": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "criticidade": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "status": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "vigente": {
+                      "type": [
+                        "boolean",
+                        "null"
+                      ]
+                    },
+                    "data_ato": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "vigente_de": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "vigente_ate": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "tipo",
+              "parametros",
+              "itens"
+            ],
+            "description": "Tarefas com vencimento; parametros.em_risco = true quando só as em risco",
+            "properties": {
+              "tipo": {
+                "const": "tarefas"
+              },
+              "parametros": {
+                "type": "object",
+                "properties": {
+                  "em_risco": {
+                    "type": "boolean"
+                  },
+                  "obrigacao_id": {
+                    "type": "string"
+                  }
+                }
+              },
+              "itens": {
+                "type": "array",
+                "maxItems": 50,
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "descricao",
+                    "vencimento",
+                    "status",
+                    "em_risco",
+                    "area_responsavel",
+                    "obrigacao_id",
+                    "obrigacao_versao"
+                  ],
+                  "properties": {
+                    "descricao": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "vencimento": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "status": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "em_risco": {
+                      "type": [
+                        "boolean",
+                        "null"
+                      ]
+                    },
+                    "area_responsavel": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "obrigacao_id": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "obrigacao_versao": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "tipo",
+              "parametros",
+              "itens"
+            ],
+            "description": "O que cada ato mudou, do mais recente ao mais antigo; alteracoes traz o antes e o depois",
+            "properties": {
+              "tipo": {
+                "const": "linha_do_tempo"
+              },
+              "parametros": {
+                "type": "object",
+                "properties": {
+                  "em_risco": {
+                    "type": "boolean"
+                  },
+                  "obrigacao_id": {
+                    "type": "string"
+                  }
+                }
+              },
+              "itens": {
+                "type": "array",
+                "maxItems": 50,
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "ocorrido_em",
+                    "obrigacao_id",
+                    "titulo",
+                    "versao",
+                    "evento",
+                    "resumo",
+                    "ato_id",
+                    "data_ato",
+                    "trecho_citado",
+                    "alteracoes"
+                  ],
+                  "properties": {
+                    "ocorrido_em": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "obrigacao_id": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "titulo": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "versao": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "evento": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "resumo": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "ato_id": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "data_ato": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "trecho_citado": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "alteracoes": {
+                      "type": [
+                        "array",
+                        "null"
+                      ],
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": [
+                          "campo",
+                          "antes",
+                          "depois"
+                        ],
+                        "properties": {
+                          "campo": {
+                            "type": "string"
+                          },
+                          "antes": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "depois": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "tipo",
+              "parametros",
+              "itens"
+            ],
+            "description": "Todas as versões de uma obrigação (parametros.obrigacao_id), com o período em vigor",
+            "properties": {
+              "tipo": {
+                "const": "versoes"
+              },
+              "parametros": {
+                "type": "object",
+                "properties": {
+                  "em_risco": {
+                    "type": "boolean"
+                  },
+                  "obrigacao_id": {
+                    "type": "string"
+                  }
+                }
+              },
+              "itens": {
+                "type": "array",
+                "maxItems": 50,
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "obrigacao_id",
+                    "versao",
+                    "titulo",
+                    "status",
+                    "vigente",
+                    "vigente_de",
+                    "vigente_ate",
+                    "orgao_sigla",
+                    "fonte_ato",
+                    "fonte_dispositivo",
+                    "data_ato",
+                    "trecho_citado",
+                    "prazo_regra",
+                    "area_responsavel",
+                    "evidencia",
+                    "criticidade",
+                    "aplica_a"
+                  ],
+                  "properties": {
+                    "obrigacao_id": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "versao": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "titulo": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "status": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "vigente": {
+                      "type": [
+                        "boolean",
+                        "null"
+                      ]
+                    },
+                    "vigente_de": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "vigente_ate": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "orgao_sigla": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "fonte_ato": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "fonte_dispositivo": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "data_ato": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "trecho_citado": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "prazo_regra": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "area_responsavel": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "evidencia": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "criticidade": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "aplica_a": {
+                      "type": [
+                        "array",
+                        "null"
+                      ],
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}

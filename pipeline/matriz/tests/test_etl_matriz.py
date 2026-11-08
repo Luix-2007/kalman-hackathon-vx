@@ -166,6 +166,8 @@ def test_aprovacao_move_a_tarefa_para_31_03(com_proposta):
     assert not dcr[0]["em_risco"]
     eventos = [v["evento"] for v in linhas(com_proposta, etl.GOLD_VERSOES) if v["obrigacao_id"] == "OBR-013"]
     assert eventos == ["inclusao", "alteracao", "aprovacao"]
+    v1, v2 = obs[("OBR-013", 1)], obs[("OBR-013", 2)]
+    assert (v1["vigente_de"], v1["vigente_ate"]) == (HOJE, HOJE) and (v2["vigente_de"], v2["vigente_ate"]) == (HOJE, None)
 
 
 def test_snapshots_do_iceberg_guardam_a_versao_anterior(com_proposta):
@@ -258,3 +260,57 @@ def test_parse_args():
         etl.parse_args(["--STAGE", "perfis", "--LAKE_URI", "s3://b"])
     with pytest.raises(SystemExit):
         etl.parse_args(["--STAGE", "gold", "--LAKE_URI", "s3://b", "--HOJE", "07/11/2026"])
+
+
+# ---------------------------------------------------------------- linha do tempo
+
+def test_linha_do_tempo_traz_ato_e_antes_depois(com_proposta):
+    h = [v for v in linhas(com_proposta, etl.GOLD_VERSOES) if v["obrigacao_id"] == "OBR-013"][-1]
+    assert h["evento"] == "alteracao" and h["ato_id"] == "dou-2026-11-07-s1-000013"
+    assert h["data_ato"] == date(2026, 11, 7) and h["ato_url"] == "https://www.in.gov.br/"
+    assert "31 de março" in h["trecho_citado"]
+    alt = {a["campo"]: a for a in json.loads(h["alteracoes"])}
+    assert alt["prazo_regra"]["antes"] == "Até 30 de abril do ano seguinte ao exercício"
+    assert alt["prazo_regra"]["depois"] == "Até 31 de março do ano seguinte ao exercício"
+    assert obrigacoes(com_proposta)[("OBR-013", 2)]["data_ato"] == date(2026, 11, 7)
+
+
+def test_gold_antiga_ganha_as_colunas_novas(amb):
+    """A gold já existe na AWS sem as colunas da linha do tempo: o job evolui o schema."""
+    import pyarrow as pa
+    novas = {"data_ato", "vigente_de", "vigente_ate", "ato_id", "ato_url", "trecho_citado", "alteracoes"}
+    for ident in (etl.GOLD_OBRIGACOES, etl.GOLD_VERSOES):
+        antigo = pa.schema([f for f in etl.SCHEMAS[ident] if f.name not in novas])
+        amb["catalog"].create_namespace_if_not_exists("gold_db")
+        amb["catalog"].create_table(ident, schema=antigo)
+    etl.exportar_perfis([item_aurora()], amb["lake"], "2026-11-07")
+    copia(amb, FIXTURES / "matriz.csv", "importada", CNPJ, "matriz.csv")
+    roda(amb)
+    cols = {f.name for f in amb["catalog"].load_table(etl.GOLD_VERSOES).schema().fields}
+    assert novas - {"vigente_de", "vigente_ate"} <= cols
+    assert obrigacoes(amb)[("OBR-001", 1)]["vigente_de"] == HOJE
+
+
+def test_data_publicacao_invalida_vai_para_quarentena(aurora):
+    escreve_proposta(aurora, "d1", [{"cnpj": CNPJ, "tipo": "nova", "titulo": "X", "trecho_citado": "t",
+                                     "recorrencia": "por_evento"}])
+    alvo = Path(etl.landing(aurora["lake"], "propostas_llm", "2026-11-07", "d1.json"))
+    doc = json.loads(alvo.read_text()); doc["data_publicacao"] = "07/11/2026"; alvo.write_text(json.dumps(doc))
+    roda(aurora, agora=datetime(2026, 11, 7, 14))
+    c = [c for c in linhas(aurora, etl.SILVER_CANDIDATAS) if c["origem"] == "llm"][0]
+    assert not c["valida"] and any("data_publicacao" in e for e in c["erros"])
+
+
+# ---------------------------------------------------------------- contrato com ia/propostas
+
+def test_arquivo_gerado_pelo_passo_de_propostas_entra_valido(aurora):
+    """O passo de propostas do DOU (ia/propostas) grava este formato; o teste de lá confere que a
+    fixture é exatamente o que ele gera. Aqui, o ETL tem de aceitá-lo sem quarentena."""
+    gerado = RAIZ / "ia/propostas/tests/fixtures/proposta_dcr.json"
+    copia(aurora, gerado, "propostas_llm", "2026-11-08", "dou-2026-11-07-s1-000013__KALMANTESTE100.json")
+    nb, ns, _ = roda(aurora, agora=datetime(2026, 11, 8, 6))
+    assert nb["matriz_propostas_llm"] == 1 and ns["quarentena"] == 0
+    cand = [c for c in linhas(aurora, etl.SILVER_CANDIDATAS) if c["origem"] == "llm"]
+    assert len(cand) == 1 and cand[0]["valida"], cand[0]["erros"]
+    v2 = obrigacoes(aurora)[("OBR-013", 2)]
+    assert v2["status"] == "proposta" and "31/03" in v2["prazo_json"] and v2["area_responsavel"] == "GCTR"

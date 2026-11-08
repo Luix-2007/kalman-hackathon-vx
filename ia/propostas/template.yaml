@@ -1,0 +1,241 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Propostas do DOU: quando o ETL do DOU termina, indexa os atos novos (Titan v2 -> S3 Vectors),
+  recupera os candidatos de cada empresa, tria e extrai com o Bedrock, verifica com as regras do
+  ETL da matriz e grava as propostas na landing da matriz. Nada vale sem a decisão do dono.
+
+Parameters:
+  LakeBucketName:
+    Type: String
+    Description: Output LakeBucketName do stack lakehouse-pipeline (o Makefile resolve)
+  VectorBucketName:
+    Type: String
+    Description: Output EmpresasVectorBucketName do stack lakehouse-pipeline (o índice dos atos fica no mesmo bucket)
+  AthenaWorkGroup:
+    Type: String
+    Default: lakehouse-pipeline-lakehouse
+    Description: Output AthenaWorkGroupName do stack lakehouse-pipeline
+  AcessoLeituraGoldPolicyArn:
+    Type: String
+    Description: Output AcessoLeituraGoldPolicyArn do stack lakehouse-pipeline (leitura de silver e gold pelo Athena)
+  DouStateMachineArn:
+    Type: String
+    Description: Output StateMachineArn do stack lakehouse-dou; o fim com sucesso dela dispara este passo
+  ModeloTriagem:
+    Type: String
+    Default: us.anthropic.claude-haiku-4-5-20251001-v1:0
+    Description: Perfil de inferência da triagem (barato, muitas chamadas)
+  ModeloExtracao:
+    Type: String
+    Default: us.anthropic.claude-sonnet-5
+    Description: Perfil de inferência da extração (forte, poucas chamadas)
+  LimiarSimilaridade:
+    Type: String
+    Default: "0.35"
+    Description: Semelhança mínima (1 - distância de cosseno) para um trecho contar na busca
+  LimiarConfianca:
+    Type: String
+    Default: "0.6"
+    Description: Confiança mínima do modelo para a proposta ser gravada
+  MaxPares:
+    Type: Number
+    Default: 300
+    Description: Teto de pares (empresa, ato) por execução
+  RetencaoDoLog:
+    Type: Number
+    Default: 30
+
+Globals:
+  Function:
+    Runtime: python3.13
+    Architectures: [arm64]
+    CodeUri: src/
+    Environment:
+      Variables:
+        LAKE_BUCKET: !Ref LakeBucketName
+        VECTOR_BUCKET: !Ref VectorBucketName
+        INDICE_ATOS: dou-atos-v1
+        ATHENA_WORKGROUP: !Ref AthenaWorkGroup
+        TAXONOMIA_URI: !Sub s3://${LakeBucketName}/artefatos/cadastro/tipos_empresa.json
+        MODELO_TRIAGEM: !Ref ModeloTriagem
+        MODELO_EXTRACAO: !Ref ModeloExtracao
+        LIMIAR_SIMILARIDADE: !Ref LimiarSimilaridade
+        LIMIAR_CONFIANCA: !Ref LimiarConfianca
+        MAX_PARES: !Ref MaxPares
+        LOG_LEVEL: INFO
+
+Resources:
+  # Índice dos trechos dos atos, no bucket de vetores do lakehouse-pipeline (mesmo modelo e
+  # dimensão da classificação das empresas). O texto do trecho vai como metadado não filtrável.
+  AtosIndex:
+    Type: AWS::S3Vectors::Index
+    Properties:
+      VectorBucketName: !Ref VectorBucketName
+      IndexName: dou-atos-v1
+      DataType: float32
+      Dimension: 1024
+      DistanceMetric: cosine
+      MetadataConfiguration:
+        NonFilterableMetadataKeys: [texto]
+
+  # Uma role para as quatro funções: o que muda entre elas é pouco, e assim a auditoria é uma só.
+  PropostasRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - !Ref AcessoLeituraGoldPolicyArn
+      Policies:
+        - PolicyName: propostas
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: Modelos
+                Effect: Allow
+                Action: [bedrock:InvokeModel]
+                Resource:
+                  - !Sub arn:${AWS::Partition}:bedrock:${AWS::Region}::foundation-model/amazon.titan-embed-text-v2:0
+                  - !Sub arn:${AWS::Partition}:bedrock:*::foundation-model/anthropic.*
+                  - !Sub arn:${AWS::Partition}:bedrock:*:${AWS::AccountId}:inference-profile/us.anthropic.*
+              - Sid: IndiceDosAtos
+                Effect: Allow
+                Action: [s3vectors:PutVectors, s3vectors:GetVectors, s3vectors:QueryVectors]
+                Resource: !GetAtt AtosIndex.IndexArn
+              - Sid: TiposDeEmpresa
+                Effect: Allow
+                Action: s3:GetObject
+                Resource: !Sub arn:${AWS::Partition}:s3:::${LakeBucketName}/artefatos/cadastro/tipos_empresa.json
+              - Sid: GravarPropostasEAuditoria
+                Effect: Allow
+                Action: [s3:GetObject, s3:PutObject]
+                Resource:
+                  - !Sub arn:${AWS::Partition}:s3:::${LakeBucketName}/landing/matriz/propostas_llm/*
+                  - !Sub arn:${AWS::Partition}:s3:::${LakeBucketName}/audit/propostas/*
+              - Sid: ListarAuditoria
+                Effect: Allow
+                Action: s3:ListBucket
+                Resource: !Sub arn:${AWS::Partition}:s3:::${LakeBucketName}
+                Condition:
+                  StringLike:
+                    s3:prefix: ["audit/propostas/*", "landing/matriz/propostas_llm/*"]
+
+  PropostasLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${AWS::StackName}
+      RetentionInDays: !Ref RetencaoDoLog
+
+  IndexarFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: handlers.indexar
+      Role: !GetAtt PropostasRole.Arn
+      MemorySize: 1024
+      Timeout: 900
+      LoggingConfig: { LogGroup: !Ref PropostasLogGroup }
+
+  RecuperarFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: handlers.recuperar
+      Role: !GetAtt PropostasRole.Arn
+      MemorySize: 1024
+      Timeout: 900
+      LoggingConfig: { LogGroup: !Ref PropostasLogGroup }
+
+  ProcessarFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: handlers.processar
+      Role: !GetAtt PropostasRole.Arn
+      MemorySize: 512
+      Timeout: 600
+      LoggingConfig: { LogGroup: !Ref PropostasLogGroup }
+
+  ResumirFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: handlers.resumir
+      Role: !GetAtt PropostasRole.Arn
+      MemorySize: 256
+      Timeout: 60
+      LoggingConfig: { LogGroup: !Ref PropostasLogGroup }
+
+  PropostasStateMachine:
+    Type: AWS::Serverless::StateMachine
+    Properties:
+      Type: STANDARD
+      DefinitionUri: statemachine/propostas.asl.json
+      DefinitionSubstitutions:
+        IndexarFunctionArn: !GetAtt IndexarFunction.Arn
+        RecuperarFunctionArn: !GetAtt RecuperarFunction.Arn
+        ProcessarFunctionArn: !GetAtt ProcessarFunction.Arn
+        ResumirFunctionArn: !GetAtt ResumirFunction.Arn
+      Policies:
+        - LambdaInvokePolicy: { FunctionName: !Ref IndexarFunction }
+        - LambdaInvokePolicy: { FunctionName: !Ref RecuperarFunction }
+        - LambdaInvokePolicy: { FunctionName: !Ref ProcessarFunction }
+        - LambdaInvokePolicy: { FunctionName: !Ref ResumirFunction }
+      Events:
+        FimDoDou:
+          Type: EventBridgeRule
+          Properties:
+            Pattern:
+              source: [aws.states]
+              detail-type: [Step Functions Execution Status Change]
+              detail:
+                status: [SUCCEEDED]
+                stateMachineArn: [!Ref DouStateMachineArn]
+
+  # Eventos de cada etapa, para consultar no Athena (o que a busca trouxe, o que a triagem
+  # descartou e por quê, o que a verificação reprovou).
+  PropostasEventosTable:
+    Type: AWS::Glue::Table
+    Properties:
+      CatalogId: !Ref AWS::AccountId
+      DatabaseName: bronze_db
+      TableInput:
+        Name: propostas_eventos
+        TableType: EXTERNAL_TABLE
+        Parameters:
+          classification: json
+          projection.enabled: "true"
+          projection.dt.type: date
+          projection.dt.format: yyyy-MM-dd
+          projection.dt.range: "2026-11-01,NOW"
+          storage.location.template: !Sub s3://${LakeBucketName}/audit/propostas/eventos/dt=${!dt}/
+        PartitionKeys:
+          - { Name: dt, Type: string }
+        StorageDescriptor:
+          Location: !Sub s3://${LakeBucketName}/audit/propostas/eventos/
+          InputFormat: org.apache.hadoop.mapred.TextInputFormat
+          OutputFormat: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
+          SerdeInfo:
+            SerializationLibrary: org.openx.data.jsonserde.JsonSerDe
+          Columns:
+            - { Name: em, Type: string }
+            - { Name: run_id, Type: string }
+            - { Name: etapa, Type: string }
+            - { Name: cnpj, Type: string }
+            - { Name: ato_id, Type: string }
+            - { Name: resultado, Type: string }
+            - { Name: score, Type: double }
+            - { Name: motivo, Type: string }
+            - { Name: modelo, Type: string }
+            - { Name: versao_prompt, Type: string }
+            - { Name: detalhes, Type: string }
+
+Outputs:
+  StateMachineArn:
+    Value: !Ref PropostasStateMachine
+  AtosIndexArn:
+    Value: !GetAtt AtosIndex.IndexArn
+  EventosTabela:
+    Value: bronze_db.propostas_eventos

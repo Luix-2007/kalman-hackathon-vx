@@ -17,6 +17,8 @@ from pyiceberg.catalog.sql import SqlCatalog
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 import etl  # noqa: E402
 
+RAIZ = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+
 DIA1, DIA2 = "2026-11-07", "2026-11-08"
 
 BB = json.loads(json.dumps({
@@ -140,21 +142,6 @@ def test_qualidade_barra_status_desconhecido(amb):
             or "usuarios_cnpj" not in [t[1] for t in amb["catalog"].list_tables("silver_db")])
 
 
-def test_kb_docs_sem_nomes_de_socios(amb):
-    roda_dia(amb, DIA1, ITENS_DIA1)
-    assert etl.kb_docs(amb["catalog"], amb["lake"]) == 2
-    pasta = etl.kb_dir(amb["lake"])
-    doc = open(os.path.join(pasta, "u1.md"), encoding="utf-8").read()
-    assert "BANCO DO BRASIL SA" in doc
-    assert "00.000.000/0001-91" in doc
-    assert "R$ 120.000.000.000,00" in doc
-    assert "FULANO" not in doc and "BELTRANO" not in doc
-    meta = json.load(open(os.path.join(pasta, "u1.md.metadata.json"), encoding="utf-8"))
-    assert meta == {"metadataAttributes": {"user_id": "u1", "status": "ativa",
-                                           "situacao_cadastral": "Ativa"}}
-    assert not os.path.exists(os.path.join(pasta, "u3.md"))  # nao_encontrado não vira documento
-
-
 def test_resolve_export_data_uri():
     class FakeDdb:
         def describe_export(self, ExportArn):
@@ -195,3 +182,17 @@ def test_modelo_de_organizacoes_le_so_o_item_da_empresa(amb):
     assert set(u) == {"CNPJ#00000000000191", "CNPJ#33000167000101"}
     assert u["CNPJ#00000000000191"]["razao_social"] == "BANCO DO BRASIL SA"
     assert set(por_usuario(amb, etl.GOLD_EMPRESAS)) == {"CNPJ#00000000000191"}
+
+
+def test_bronze_traz_atividade_porte_e_sede_da_empresa(amb):
+    """Campos que a classificação usa, lidos do item do cadastro (fixture da Aurora)."""
+    empresa = json.loads(open(os.path.join(RAIZ, "api/cnpj-cadastro/src/fixtures/KALMANTESTE100.json"),
+                              encoding="utf-8").read(), parse_float=Decimal)
+    itens = [{"user_id": "CNPJ#KALMANTESTE100", "cnpj": "KALMANTESTE100", "dono": "u1", "status": "ativa",
+              "consultado_em": "2026-11-07T10:00:00+00:00", "empresa": empresa}]
+    roda_dia(amb, DIA1, itens)
+    e = por_usuario(amb, etl.GOLD_EMPRESAS)["CNPJ#KALMANTESTE100"]
+    assert e["cnae_principal"] == "3514000"
+    assert "Distribuição de energia elétrica" in e["cnae_principal_descricao"]
+    assert "Geração de energia elétrica" in e["cnaes_secundarios_descricao"]
+    assert e["uf"] == empresa["uf"] and e["porte_empresa"] == empresa.get("porte_empresa")

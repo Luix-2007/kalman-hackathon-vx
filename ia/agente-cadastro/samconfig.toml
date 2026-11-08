@@ -1,0 +1,14 @@
+version = 0.1
+
+# LakeBucketName, KbId e ImageTag são resolvidos pelo Makefile a partir
+# dos stacks lakehouse-pipeline e lakehouse-kb.
+[default.deploy.parameters]
+stack_name      = "ia-agente"
+resolve_s3      = true
+s3_prefix       = "ia-agente"
+region          = "us-east-1"
+confirm_changeset = true
+capabilities    = "CAPABILITY_IAM"
+
+[default.global.parameters]
+region = "us-east-1"

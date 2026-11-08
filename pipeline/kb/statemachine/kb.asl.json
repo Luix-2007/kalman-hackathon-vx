@@ -1,0 +1,90 @@
+{
+  "Comment": "KB empresas: gera documentos da Gold (Docs) e aciona ingestao da KB (Sync)",
+  "StartAt": "Docs",
+  "TimeoutSeconds": 3600,
+  "States": {
+    "Docs": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::glue:startJobRun.sync",
+      "Parameters": {
+        "JobName": "${GlueJobName}",
+        "Arguments": {
+          "--STAGE": "docs"
+        }
+      },
+      "ResultPath": null,
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Glue.ConcurrentRunsExceededException",
+            "Glue.AWSGlueException"
+          ],
+          "IntervalSeconds": 30,
+          "MaxAttempts": 6,
+          "BackoffRate": 1.5
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "ResultPath": "$.erro",
+          "Next": "AvisarFalha"
+        }
+      ],
+      "Next": "Sync"
+    },
+    "Sync": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::glue:startJobRun.sync",
+      "Parameters": {
+        "JobName": "${GlueJobName}",
+        "Arguments": {
+          "--STAGE": "sync"
+        }
+      },
+      "ResultPath": null,
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Glue.ConcurrentRunsExceededException",
+            "Glue.AWSGlueException"
+          ],
+          "IntervalSeconds": 30,
+          "MaxAttempts": 6,
+          "BackoffRate": 1.5
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "ResultPath": "$.erro",
+          "Next": "AvisarFalha"
+        }
+      ],
+      "Next": "Sucesso"
+    },
+    "Sucesso": {
+      "Type": "Succeed"
+    },
+    "AvisarFalha": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::sns:publish",
+      "Parameters": {
+        "TopicArn": "${AlertTopicArn}",
+        "Subject": "Pipeline KB empresas falhou",
+        "Message.$": "States.Format('Execucao {} falhou: {}', $$.Execution.Id, States.JsonToString($.erro))"
+      },
+      "ResultPath": null,
+      "Next": "Falhou"
+    },
+    "Falhou": {
+      "Type": "Fail",
+      "Error": "KbPipelineFalhou",
+      "Cause": "Veja o estado AvisarFalha e os logs do job Glue"
+    }
+  }
+}

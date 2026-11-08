@@ -37,14 +37,16 @@ CREATE TABLE gold_db.matriz_obrigacoes (
   aplica_a VARCHAR[], recorrencia VARCHAR, periodicidade VARCHAR, prazo_regra VARCHAR, prazo_json VARCHAR,
   area_responsavel VARCHAR, evidencia VARCHAR, criticidade VARCHAR, origem VARCHAR, status VARCHAR,
   confianca DOUBLE, incluida_em DATE, alterada_por VARCHAR, vigente BOOLEAN, mudanca VARCHAR,
-  proposta_id VARCHAR, hash_conteudo VARCHAR, decidida_por VARCHAR, decidida_em TIMESTAMP);
+  proposta_id VARCHAR, hash_conteudo VARCHAR, decidida_por VARCHAR, decidida_em TIMESTAMP,
+  data_ato DATE, vigente_de DATE, vigente_ate DATE);
 CREATE TABLE gold_db.matriz_tarefas (
   cnpj VARCHAR, tarefa_id VARCHAR, obrigacao_id VARCHAR, obrigacao_versao INTEGER, unidade_id VARCHAR,
   outorga_id VARCHAR, descricao VARCHAR, vencimento DATE, area_responsavel VARCHAR, status VARCHAR,
   evidencia_url VARCHAR, em_risco BOOLEAN, atualizada_em TIMESTAMP);
 CREATE TABLE gold_db.matriz_versoes (
   cnpj VARCHAR, obrigacao_id VARCHAR, versao INTEGER, evento VARCHAR, status VARCHAR, origem VARCHAR,
-  ocorrido_em DATE, por VARCHAR, resumo VARCHAR);
+  ocorrido_em DATE, por VARCHAR, resumo VARCHAR, ato_id VARCHAR, ato_url VARCHAR, data_ato DATE,
+  trecho_citado VARCHAR, alteracoes VARCHAR);
 CREATE TABLE bronze_db.matriz_decisoes (
   decisao_id VARCHAR, tipo VARCHAR, cnpj VARCHAR, obrigacao_id VARCHAR, versao INTEGER, tarefa_id VARCHAR,
   decisao VARCHAR, evidencia_url VARCHAR, usuario VARCHAR, comentario VARCHAR, decidida_em TIMESTAMP);
@@ -62,6 +64,7 @@ OBR = [
 ]
 PROPOSTA = {"cnpj": CNPJ, "obrigacao_id": "OBR-013", "mudanca": "alteracao", "proposta_id": "dou-1#0",
             "origem": "llm", "fonte_ato": "dou-1", "confianca": 0.86, "trecho_citado": "até 31 de março",
+            "fonte_url": "https://www.in.gov.br/dou-1", "data_ato": date(2026, 11, 6), "prazo_regra": "Até 31/03",
             "prazo_json": '[{"unidade": "data_fixa", "referencia": "ano_seguinte_exercicio", "valor": "31/03"}]'}
 
 
@@ -119,19 +122,23 @@ def gold_inicial(fake):
     tarefas = regras.consolidar_tarefas(geradas, [], {}, m.versoes_vigentes(), m.pendentes(), HOJE, AGORA)
     fake.inserir(sql.GOLD_OBRIGACOES, m.linhas(), sql.COLUNAS_OBRIGACAO)
     fake.inserir(sql.GOLD_TAREFAS, tarefas, sql.COLUNAS_TAREFA)
-    fake.inserir(sql.GOLD_VERSOES, m.historico,
-                 ["cnpj", "obrigacao_id", "versao", "evento", "status", "origem", "ocorrido_em", "por", "resumo"])
+    fake.inserir(sql.GOLD_VERSOES, m.historico, sql.COLUNAS_HISTORICO)
 
 
 @pytest.fixture
 def api(monkeypatch):
     monkeypatch.setenv("AWS_DEFAULT_REGION", "us-east-1")
     monkeypatch.setenv("TABLE_NAME", "t")
+    monkeypatch.setenv("TRAVAS_TABLE", "travas")
     with mock_aws():
         boto3.client("dynamodb").create_table(
             TableName="t", BillingMode="PAY_PER_REQUEST",
             AttributeDefinitions=[{"AttributeName": "user_id", "AttributeType": "S"}],
             KeySchema=[{"AttributeName": "user_id", "KeyType": "HASH"}])
+        boto3.client("dynamodb").create_table(
+            TableName="travas", BillingMode="PAY_PER_REQUEST",
+            AttributeDefinitions=[{"AttributeName": "chave", "AttributeType": "S"}],
+            KeySchema=[{"AttributeName": "chave", "KeyType": "HASH"}])
         t = boto3.resource("dynamodb").Table("t")
         t.put_item(Item={"user_id": "dono", "cnpj": CNPJ, "papel": "dono"})
         t.put_item(Item={"user_id": "membro", "cnpj": CNPJ, "papel": "membro"})
@@ -148,7 +155,7 @@ def api(monkeypatch):
         yield mod
 
 
-def chamar(api, sub, rota, corpo=None, id=None, query=None):
+def chamar(api, sub, rota, corpo=None, id=None, query=None, contexto=None):
     ev = {"routeKey": rota, "requestContext": {"http": {"method": rota.split()[0]}}}
     if sub:
         ev["requestContext"]["authorizer"] = {"jwt": {"claims": {"sub": sub}}}
@@ -158,7 +165,7 @@ def chamar(api, sub, rota, corpo=None, id=None, query=None):
         ev["queryStringParameters"] = query
     if corpo is not None:
         ev["body"] = corpo if isinstance(corpo, str) else json.dumps(corpo)
-    r = api.handler(ev)
+    r = api.handler(ev, contexto)
     return r["statusCode"], json.loads(r["body"])
 
 
@@ -241,6 +248,64 @@ def test_aprovar_move_a_tarefa_para_31_03_na_hora(api):
 
     code, body = chamar(api, "dono", "POST /obrigacoes/{id}/decisao", {"versao": 2, "decisao": "rejeitar"}, id="OBR-013")
     assert code == 409
+
+
+APROVAR = {"versao": 2, "decisao": "aprovar"}
+BRONZE = "SELECT decisao FROM bronze_db.matriz_decisoes"
+
+
+def falhar_no(monkeypatch, trecho):
+    """athena.executar falha nos SQLs que contêm `trecho` (os outros rodam no DuckDB)."""
+    original = athena.executar
+    def executar(q):
+        if trecho in q:
+            raise athena.ErroAthena("falha simulada")
+        return original(q)
+    monkeypatch.setattr(athena, "executar", executar)
+    return original
+
+
+def test_decisao_em_andamento_por_outra_requisicao_409_sem_gravar(api):
+    api._travas.put_item(Item={"chave": f"{CNPJ}#OBR-013#v2", "expira_em": 1})   # a outra aba chegou antes
+    code, body = chamar(api, "dono", "POST /obrigacoes/{id}/decisao", APROVAR, id="OBR-013")
+    assert code == 409 and body["erro"] == api.JA_DECIDIDA
+    assert api.fake.linhas(BRONZE) == []
+
+
+def test_falha_na_bronze_nao_grava_nada_e_deixa_repetir(api, monkeypatch):
+    original = falhar_no(monkeypatch, "bronze_db.matriz_decisoes")
+    code, body = chamar(api, "dono", "POST /obrigacoes/{id}/decisao", APROVAR, id="OBR-013")
+    assert code == 502 and "registrada" not in body["erro"]
+    assert api.fake.linhas("SELECT status FROM gold_db.matriz_obrigacoes WHERE obrigacao_id = 'OBR-013' "
+                           "AND versao = 2") == [{"status": "proposta"}]          # a gold não foi tocada
+    monkeypatch.setattr(athena, "executar", original)
+    code, _ = chamar(api, "dono", "POST /obrigacoes/{id}/decisao", APROVAR, id="OBR-013")
+    assert code == 200                                                        # a trava foi solta
+
+
+def test_falha_na_gold_depois_da_bronze_avisa_que_a_decisao_vale(api, monkeypatch, caplog):
+    falhar_no(monkeypatch, "INSERT INTO gold_db.matriz_tarefas")
+    code, body = chamar(api, "dono", "POST /obrigacoes/{id}/decisao", APROVAR, id="OBR-013")
+    assert code == 502 and body["erro"] == api.GOLD_PENDENTE
+    assert api.fake.linhas(BRONZE) == [{"decisao": "aprovar"}]             # o job refaz a gold a partir daqui
+    assert "gold ficou incompleta" in caplog.text
+    code, _ = chamar(api, "dono", "POST /obrigacoes/{id}/decisao", {"versao": 2, "decisao": "rejeitar"}, id="OBR-013")
+    assert code == 409                                                        # não dá para decidir de novo
+
+
+def test_sem_tempo_para_gravar_503_sem_gravar_nem_travar(api):
+    class Contexto:
+        def __init__(self, ms):
+            self.ms = ms
+        def get_remaining_time_in_millis(self):
+            return self.ms
+    code, body = chamar(api, "dono", "POST /obrigacoes/{id}/decisao", APROVAR, id="OBR-013",
+                        contexto=Contexto(api.MIN_MS_PARA_GRAVAR - 1))
+    assert code == 503 and body["erro"] == api.SEM_TEMPO
+    assert api.fake.linhas(BRONZE) == []
+    code, _ = chamar(api, "dono", "POST /obrigacoes/{id}/decisao", APROVAR, id="OBR-013",
+                     contexto=Contexto(api.MIN_MS_PARA_GRAVAR))
+    assert code == 200
 
 
 def test_rejeitar_mantem_30_04_sem_risco(api):
@@ -355,3 +420,52 @@ def test_athena_erros(monkeypatch):
     monkeypatch.setattr(athena, "_client", ClienteFalso([("FAILED", "SYNTAX_ERROR")], []))
     with pytest.raises(athena.ErroAthena):
         athena.executar("UPDATE x")
+
+
+# ---------------------------------------------------------------- linha do tempo
+
+def test_linha_do_tempo_mostra_o_que_o_ato_mudou(api):
+    code, body = chamar(api, "dono", "GET /linha-do-tempo")
+    assert code == 200
+    ev = body["eventos"][0]   # o mais recente
+    assert ev["evento"] == "alteracao" and ev["obrigacao_id"] == "OBR-013" and ev["titulo"] == "Entregar as DCR"
+    assert ev["ato_id"] == "dou-1" and ev["ato_url"] == "https://www.in.gov.br/dou-1" and ev["data_ato"] == "2026-11-06"
+    alt = {a["campo"]: a for a in ev["alteracoes"]}
+    assert alt["prazo_regra"] == {"campo": "prazo_regra", "antes": None, "depois": "Até 31/03"}
+    assert "30/04" in alt["prazo_json"]["antes"] and "31/03" in alt["prazo_json"]["depois"]
+    assert {e["obrigacao_id"] for e in body["eventos"]} == {"OBR-009", "OBR-013"}
+
+
+def test_linha_do_tempo_filtra_por_ato_e_obrigacao(api):
+    assert [e["evento"] for e in chamar(api, "dono", "GET /linha-do-tempo", query={"ato_id": "dou-1"})[1]["eventos"]] == ["alteracao"]
+    assert {e["obrigacao_id"] for e in chamar(api, "dono", "GET /linha-do-tempo",
+                                                query={"obrigacao_id": "OBR-009"})[1]["eventos"]} == {"OBR-009"}
+    assert chamar(api, "dono", "GET /linha-do-tempo", query={"ato_id": "x' OR 1=1 --"})[0] == 400
+
+
+def test_aprovacao_entra_na_linha_do_tempo_com_o_ato_e_fecha_a_vigencia(api):
+    chamar(api, "dono", "POST /obrigacoes/{id}/decisao", {"versao": 2, "decisao": "aprovar"}, id="OBR-013")
+    ev = chamar(api, "dono", "GET /linha-do-tempo", query={"obrigacao_id": "OBR-013"})[1]["eventos"]
+    assert [e["evento"] for e in ev] == ["aprovacao", "alteracao", "inclusao"]
+    assert ev[0]["ato_id"] == "dou-1" and ev[0]["data_ato"] == "2026-11-06" and ev[0]["por"] == "dono"
+    vig = api.fake.linhas("SELECT versao, vigente_de, vigente_ate FROM gold_db.matriz_obrigacoes "
+                          "WHERE obrigacao_id = 'OBR-013' ORDER BY versao")
+    assert vig == [{"versao": 1, "vigente_de": "2026-11-01", "vigente_ate": "2026-11-07"},
+                   {"versao": 2, "vigente_de": "2026-11-07", "vigente_ate": None}]
+    # como a matriz estava antes e depois
+    antes = chamar(api, "dono", "GET /obrigacoes", query={"em": "2026-11-05"})[1]["obrigacoes"]
+    depois = chamar(api, "dono", "GET /obrigacoes", query={"em": "2026-11-07"})[1]["obrigacoes"]
+    assert [(o["obrigacao_id"], o["versao"]) for o in antes] == [("OBR-009", 1), ("OBR-013", 1)]
+    assert [(o["obrigacao_id"], o["versao"]) for o in depois] == [("OBR-009", 1), ("OBR-013", 2)]
+    assert chamar(api, "dono", "GET /obrigacoes", query={"em": "05/11/2026"})[0] == 400
+
+
+def test_erro_do_athena_nao_vaza_detalhe(api, monkeypatch, caplog):
+    segredo = "SYNTAX_ERROR: line 1:8: Column 'gold_db.matriz_obrigacoes.x' cannot be resolved"
+    def falha(q):
+        raise athena.ErroAthena(segredo)
+    monkeypatch.setattr(athena, "consultar", falha)
+    code, body = chamar(api, "dono", "GET /tarefas")
+    assert code == 502 and body == {"erro": "não foi possível consultar a matriz agora, tente de novo"}
+    assert "gold_db" not in json.dumps(body)
+    assert segredo in caplog.text   # o motivo continua no log, para quem opera

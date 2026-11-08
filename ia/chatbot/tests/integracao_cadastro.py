@@ -1,20 +1,22 @@
 """
 Teste de integração cnpj-cadastro -> lakehouse -> chatbot (agent.py), contra a AWS.
 
-    make api-integracao
-    make api-integracao ARGS="--com-llm"     # também chama o modelo (precisa de MODEL_ID)
-    make api-integracao ARGS="--cnpj 33000167000101 --timeout-pipeline 3600"
+    make ia-chatbot-integracao
+    make ia-chatbot-integracao ARGS="--com-llm"     # também chama o modelo (precisa de MODEL_ID)
+    make ia-chatbot-integracao ARGS="--cnpj 33000167000101 --timeout-pipeline 3600"
 
-O contrato entre as duas partes é o user_id: o sub do Cognito que a API grava no
-DynamoDB precisa chegar em gold_db.empresas_clientes, que é onde o agente filtra
-(`WHERE user_id = '<sub>'`). Quem leva o dado de um lado para o outro é o pipeline
-do stack lakehouse-pipeline (export do DynamoDB -> landing -> bronze -> silver -> gold).
+O contrato entre as duas partes é o CNPJ: o da organização que a API grava no DynamoDB
+precisa chegar nas views do gold, onde o agente filtra (`WHERE cnpj = ?`). Quem leva o dado
+de um lado para o outro é o pipeline do stack lakehouse-pipeline (export do DynamoDB ->
+landing -> bronze -> silver -> gold). Em produção quem descobre o CNPJ do usuário é a Lambda
+api/chatbot; aqui o teste usa o CNPJ que o GET /cadastro/me devolveu.
 
   1. pela API: A cadastra o CNPJ (dono), B aceita o convite (membro), C não tem organização
   2. roda o pipeline do lakehouse e espera terminar (~15 min, por causa do export)
-  3. ferramentas do agente com o user_id de cada um:
-       A e B veem a empresa (mesmo CNPJ e razão social do GET /cadastro/me), C não vê nada
-  4. invoke() recusa user_id fora do formato (o filtro do Athena é montado com ele)
+  3. ferramentas do agente com o CNPJ da organização:
+       A e B (mesma organização) veem a empresa (mesmo CNPJ e razão social do GET /cadastro/me);
+       um CNPJ sem dados não devolve nada
+  4. invoke() recusa cnpj e user_id fora do formato (o filtro do Athena é montado com eles)
   5. (--com-llm) o agente responde com a razão social da empresa
 
 Limpeza: usuários do Cognito e itens do DynamoDB (como os smoke tests) e as linhas
@@ -34,7 +36,7 @@ from pathlib import Path
 import boto3
 
 AQUI = Path(__file__).resolve().parent
-sys.path.insert(0, str(AQUI.parents[1] / "cnpj-cadastro" / "tests"))  # smoke_lib
+sys.path.insert(0, str(AQUI.parents[2] / "api" / "cnpj-cadastro" / "tests"))  # smoke_lib
 sys.path.insert(0, str(AQUI.parent))                                   # agent.py
 
 from smoke_lib import Smoke, http  # noqa: E402
@@ -79,7 +81,8 @@ class Lakehouse:
                 StackName=stack, LogicalResourceId=logical_id)["StackResourceDetail"]["PhysicalResourceId"]
 
         self.state_machine = recurso("PipelineStateMachine")
-        # O workgroup "primary" não tem local de saída: o agente precisa de ATHENA_OUTPUT.
+        # O agente usa o workgroup do lakehouse (já tem local de saída); ATHENA_OUTPUT só vale
+        # para um workgroup sem local de saída, como o "primary".
         self.athena_output = os.environ.get("ATHENA_OUTPUT") or f"s3://{recurso('LakeBucket')}/athena-results/"
         self.sfn = boto3.client("stepfunctions", region_name=REGION)
         self.athena = boto3.client("athena", region_name=REGION)
@@ -188,40 +191,43 @@ def run(s: Smoke, lake: Lakehouse, args) -> bool:
     os.environ["ATHENA_OUTPUT"] = lake.athena_output
     import agent
 
-    def ferramentas(user):
-        return {t.tool_name: t for t in agent.make_tools(user.sub)}
+    def ferramentas(cnpj):
+        return {t.tool_name: t for t in agent.make_tools(cnpj)}
 
     print("\n  3. ferramentas do agente")
     for nome, user in (("A (dono)", a), ("B (membro)", b)):
-        painel = ferramentas(user)["painel_da_empresa"]()
+        painel = ferramentas(cad["cnpj"])["painel_da_empresa"]()
         linha = painel[0] if painel else {}
         if not s.check(f"{nome}: painel_da_empresa encontra a empresa", linha and "erro" not in linha,
-                       f"resposta={painel}  (o user_id {user.sub} não está em gold_db.empresas_clientes)"):
+                       f"resposta={painel}  (o CNPJ {cad['cnpj']} não está nas views do gold)"):
             continue
         s.check(f"{nome}: mesmo CNPJ do cadastro", so_digitos(linha.get("cnpj")) == so_digitos(cad.get("cnpj")),
                 f"{linha.get('cnpj')} != {cad.get('cnpj')}")
         s.check(f"{nome}: mesma razão social do cadastro", linha.get("razao_social") == razao,
                 f"{linha.get('razao_social')!r} != {razao!r}")
 
-    painel_c = ferramentas(c)["painel_da_empresa"]()
-    s.check("C (sem organização): painel vazio", painel_c == [], f"resposta={painel_c}")
+    painel_outro = ferramentas("99999999000199")["painel_da_empresa"]()
+    s.check("CNPJ sem dados: painel vazio", painel_outro == [], f"resposta={painel_outro}")
 
-    atos = ferramentas(a)["atos_no_dou"](limite=5)
+    atos = ferramentas(cad["cnpj"])["atos_no_dou"](limite=5)
     s.check("A: atos_no_dou roda sem erro", not any("erro" in r for r in atos), f"resposta={atos}")
 
-    frescor = ferramentas(a)["atualizacao_dos_dados"]()
+    frescor = ferramentas(cad["cnpj"])["atualizacao_dos_dados"]()
     origens = {r.get("origem") for r in frescor}
     s.check("atualizacao_dos_dados lista o cadastro (DynamoDB)", "cadastro (DynamoDB)" in origens, f"resposta={frescor}")
 
-    print("\n  4. user_id inválido")
-    for invalido in (f"CNPJ#{so_digitos(args.cnpj)}", "x' OR '1'='1", ""):
-        resp = agent.invoke({"user_id": invalido, "prompt": "qual minha empresa?"})
-        s.check(f"invoke recusa user_id {invalido!r}", "erro" in resp and "answer" not in resp, f"resposta={resp}")
+    print("\n  4. cnpj e user_id inválidos")
+    for campo, invalido in (("cnpj", f"CNPJ#{so_digitos(args.cnpj)}"), ("cnpj", "x' OR '1'='1"), ("cnpj", ""),
+                            ("user_id", "x' OR '1'='1"), ("user_id", "")):
+        payload = {"cnpj": cad["cnpj"], "user_id": a.sub, "prompt": "qual minha empresa?", campo: invalido}
+        resp = agent.invoke(payload)
+        s.check(f"invoke recusa {campo} {invalido!r}", "erro" in resp and "resposta" not in resp, f"resposta={resp}")
 
     if args.com_llm:
         print("\n  5. agente com o modelo")
-        resp = agent.invoke({"user_id": a.sub, "prompt": "Qual é a razão social e o CNPJ da minha empresa?"})
-        resposta = resp.get("answer", "")
+        resp = agent.invoke({"cnpj": cad["cnpj"], "user_id": a.sub,
+                             "prompt": "Qual é a razão social e o CNPJ da minha empresa?"})
+        resposta = resp.get("resposta", "")
         print(f"    {resposta[:300]}")
         primeira_palavra = (razao or "").split()[0].lower() if razao else "\0"
         s.check("resposta cita a empresa", primeira_palavra in resposta.lower()

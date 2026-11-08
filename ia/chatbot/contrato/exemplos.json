@@ -1,0 +1,296 @@
+{
+  "tarefas_em_risco": {
+    "pergunta": "Quais tarefas estão em risco?",
+    "resposta": {
+      "resposta": "Há 2 tarefas em risco. A mais urgente é a renovação da Licença de Operação, que vence em 10/11/2026.",
+      "blocos": [
+        {
+          "tipo": "tarefas",
+          "parametros": {
+            "em_risco": true
+          },
+          "itens": [
+            {
+              "descricao": "Pedir a renovação da Licença de Operação — LO 31004567 (validade 10/03/2027)",
+              "vencimento": "2026-11-10",
+              "status": "aberta",
+              "em_risco": true,
+              "area_responsavel": "GMA",
+              "obrigacao_id": "OBR-009",
+              "obrigacao_versao": 1
+            },
+            {
+              "descricao": "Entregar as DCR auditadas — exercício 2026",
+              "vencimento": "2027-04-30",
+              "status": "aberta",
+              "em_risco": true,
+              "area_responsavel": "GCTR",
+              "obrigacao_id": "OBR-013",
+              "obrigacao_versao": 1
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "quem_mudou_a_obr013": {
+    "pergunta": "Quem mudou o prazo da OBR-013 e para quando?",
+    "resposta": {
+      "resposta": "O ato dou-2026-11-07-s1-000013 propôs antecipar a entrega das DCR de 30/04 para 31/03. A mudança ainda aguarda decisão.",
+      "blocos": [
+        {
+          "tipo": "linha_do_tempo",
+          "parametros": {
+            "obrigacao_id": "OBR-013"
+          },
+          "itens": [
+            {
+              "ocorrido_em": "2026-11-07",
+              "obrigacao_id": "OBR-013",
+              "titulo": "Entregar à ANEEL as Demonstrações Contábeis Regulatórias (DCR) auditadas",
+              "versao": 2,
+              "evento": "alteracao",
+              "resumo": "alteração proposta pelo LLM: prazo_regra, fonte_ato",
+              "ato_id": "dou-2026-11-07-s1-000013",
+              "data_ato": "2026-11-07",
+              "trecho_citado": "As Demonstrações Contábeis Regulatórias auditadas deverão ser entregues até 31 de março do ano seguinte ao exercício a que se referem.",
+              "alteracoes": [
+                {
+                  "campo": "prazo_regra",
+                  "antes": "Até 30 de abril do ano seguinte ao exercício",
+                  "depois": "Até 31 de março do ano seguinte ao exercício"
+                },
+                {
+                  "campo": "fonte_ato",
+                  "antes": null,
+                  "depois": "dou-2026-11-07-s1-000013"
+                }
+              ]
+            },
+            {
+              "ocorrido_em": "2026-11-01",
+              "obrigacao_id": "OBR-013",
+              "titulo": "Entregar à ANEEL as Demonstrações Contábeis Regulatórias (DCR) auditadas",
+              "versao": 1,
+              "evento": "inclusao",
+              "resumo": "incluída pela matriz do cliente",
+              "ato_id": "matriz_importada:matriz.csv",
+              "data_ato": null,
+              "trecho_citado": null,
+              "alteracoes": null
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "obrigacoes_da_empresa": {
+    "pergunta": "Quais são as minhas obrigações da ANEEL?",
+    "resposta": {
+      "resposta": "A empresa tem 3 obrigações vigentes ligadas à ANEEL e 1 proposta de mudança aguardando decisão.",
+      "blocos": [
+        {
+          "tipo": "obrigacoes",
+          "parametros": {},
+          "itens": [
+            {
+              "obrigacao_id": "OBR-001",
+              "versao": 1,
+              "titulo": "Enviar à ANEEL os indicadores de continuidade DEC e FEC",
+              "orgao_sigla": "ANEEL",
+              "tema": "qualidade_do_servico",
+              "recorrencia": "periodica",
+              "periodicidade": "mensal",
+              "prazo_regra": "Até o dia 25 do mês seguinte",
+              "area_responsavel": "GOPR",
+              "criticidade": "alta",
+              "status": "aprovada",
+              "vigente": true,
+              "data_ato": null,
+              "vigente_de": "2026-11-01",
+              "vigente_ate": null
+            },
+            {
+              "obrigacao_id": "OBR-013",
+              "versao": 1,
+              "titulo": "Entregar à ANEEL as Demonstrações Contábeis Regulatórias (DCR) auditadas",
+              "orgao_sigla": "ANEEL",
+              "tema": "contabilidade_regulatoria",
+              "recorrencia": "periodica",
+              "periodicidade": "anual",
+              "prazo_regra": "Até 30 de abril do ano seguinte ao exercício",
+              "area_responsavel": "GCTR",
+              "criticidade": "alta",
+              "status": "aprovada",
+              "vigente": true,
+              "data_ato": null,
+              "vigente_de": "2026-11-01",
+              "vigente_ate": null
+            },
+            {
+              "obrigacao_id": "OBR-013",
+              "versao": 2,
+              "titulo": "Entregar à ANEEL as Demonstrações Contábeis Regulatórias (DCR) auditadas",
+              "orgao_sigla": "ANEEL",
+              "tema": "contabilidade_regulatoria",
+              "recorrencia": "periodica",
+              "periodicidade": "anual",
+              "prazo_regra": "Até 31 de março do ano seguinte ao exercício",
+              "area_responsavel": "GCTR",
+              "criticidade": "alta",
+              "status": "proposta",
+              "vigente": false,
+              "data_ato": "2026-11-07",
+              "vigente_de": null,
+              "vigente_ate": null
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "versoes_de_uma_obrigacao": {
+    "pergunta": "Mostre as versões da OBR-013.",
+    "resposta": {
+      "resposta": "A OBR-013 tem 2 versões: a 1 está em vigor e a 2 é uma proposta que antecipa o prazo para 31/03.",
+      "blocos": [
+        {
+          "tipo": "versoes",
+          "parametros": {
+            "obrigacao_id": "OBR-013"
+          },
+          "itens": [
+            {
+              "obrigacao_id": "OBR-013",
+              "versao": 1,
+              "titulo": "Entregar à ANEEL as Demonstrações Contábeis Regulatórias (DCR) auditadas",
+              "status": "aprovada",
+              "vigente": true,
+              "vigente_de": "2026-11-01",
+              "vigente_ate": null,
+              "orgao_sigla": "ANEEL",
+              "fonte_ato": null,
+              "fonte_dispositivo": null,
+              "data_ato": null,
+              "trecho_citado": null,
+              "prazo_regra": "Até 30 de abril do ano seguinte ao exercício",
+              "area_responsavel": "GCTR",
+              "evidencia": null,
+              "criticidade": "alta",
+              "aplica_a": [
+                "UN-01"
+              ]
+            },
+            {
+              "obrigacao_id": "OBR-013",
+              "versao": 2,
+              "titulo": "Entregar à ANEEL as Demonstrações Contábeis Regulatórias (DCR) auditadas",
+              "status": "proposta",
+              "vigente": false,
+              "vigente_de": null,
+              "vigente_ate": null,
+              "orgao_sigla": "ANEEL",
+              "fonte_ato": null,
+              "fonte_dispositivo": null,
+              "data_ato": "2026-11-07",
+              "trecho_citado": null,
+              "prazo_regra": "Até 31 de março do ano seguinte ao exercício",
+              "area_responsavel": "GCTR",
+              "evidencia": null,
+              "criticidade": "alta",
+              "aplica_a": [
+                "UN-01"
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "atos_do_dou": {
+    "pergunta": "Quais atos do DOU saíram sobre a minha empresa?",
+    "resposta": {
+      "resposta": "Há 2 atos recentes: uma resolução da ANEEL sobre prazos contábeis e uma portaria do MTE sobre a NR-10.",
+      "blocos": [
+        {
+          "tipo": "atos",
+          "parametros": {},
+          "itens": [
+            {
+              "data_publicacao": "2026-11-05",
+              "tipo": "Resolução Normativa",
+              "orgao": "ANEEL",
+              "identifica": "RESOLUÇÃO NORMATIVA ANEEL Nº 1.200",
+              "ementa": "Altera prazos de envio das demonstrações contábeis regulatórias das concessionárias.",
+              "url_pdf": "https://www.in.gov.br/ato-1200"
+            },
+            {
+              "data_publicacao": "2026-10-20",
+              "tipo": "Portaria",
+              "orgao": "MTE",
+              "identifica": "PORTARIA MTE Nº 88",
+              "ementa": "Atualiza a Norma Regulamentadora nº 10 sobre segurança em instalações elétricas.",
+              "url_pdf": "https://www.in.gov.br/portaria-88"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "empresa_e_tarefas": {
+    "pergunta": "Resuma a situação da minha empresa e o que vence primeiro.",
+    "resposta": {
+      "resposta": "A Aurora Energia está ativa. O que vence primeiro é a renovação da Licença de Operação, em 10/11/2026.",
+      "blocos": [
+        {
+          "tipo": "empresa",
+          "parametros": {},
+          "itens": [
+            {
+              "cnpj": "KALMANTESTE100",
+              "razao_social": "AURORA ENERGIA S.A.",
+              "situacao_cadastral": "Ativa",
+              "status_cadastro": "ativa",
+              "capital_social": "850000000.00",
+              "qtd_socios": 0,
+              "atos_no_dou": 2,
+              "tipos_de_ato": 2,
+              "ato_mais_recente": "2026-11-05"
+            }
+          ]
+        },
+        {
+          "tipo": "tarefas",
+          "parametros": {},
+          "itens": [
+            {
+              "descricao": "Pedir a renovação da Licença de Operação — LO 31004567 (validade 10/03/2027)",
+              "vencimento": "2026-11-10",
+              "status": "aberta",
+              "em_risco": true,
+              "area_responsavel": "GMA",
+              "obrigacao_id": "OBR-009",
+              "obrigacao_versao": 1
+            },
+            {
+              "descricao": "Enviar os indicadores de continuidade DEC e FEC — competência 11/2026",
+              "vencimento": "2026-12-25",
+              "status": "aberta",
+              "em_risco": false,
+              "area_responsavel": "GOPR",
+              "obrigacao_id": "OBR-001",
+              "obrigacao_versao": 1
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "sem_blocos": {
+    "pergunta": "Me passa uma receita de bolo.",
+    "resposta": {
+      "resposta": "Só posso ajudar com a sua empresa, os atos do DOU e a matriz de obrigações.",
+      "blocos": []
+    }
+  }
+}

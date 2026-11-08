@@ -33,6 +33,9 @@ export type Obrigacao = {
   alterada_por: string | null;
   vigente: boolean;
   mudanca: "inclusao" | "alteracao" | "revogacao";
+  data_ato: string | null;    // publicação do ato que originou a versão
+  vigente_de: string | null;  // período em que a versão esteve em vigor
+  vigente_ate: string | null;
 };
 
 export type Tarefa = {
@@ -53,6 +56,9 @@ export type Tarefa = {
 
 export type StatusTarefa = "aberta" | "em_andamento" | "concluida";
 
+export type Alteracao = { campo: string; antes: unknown; depois: unknown };
+
+/** Um evento da linha do tempo: o que aconteceu com uma versão e qual ato motivou. */
 export type Historico = {
   obrigacao_id: string;
   versao: number;
@@ -62,6 +68,13 @@ export type Historico = {
   ocorrido_em: string;
   por: string | null;
   resumo: string | null;
+  ato_id: string | null;
+  ato_url: string | null;
+  data_ato: string | null;
+  trecho_citado: string | null;
+  alteracoes: Alteracao[];
+  titulo?: string | null;      // só na linha do tempo geral
+  orgao_sigla?: string | null;
 };
 
 const base = () => config.matrizApiUrl;
@@ -76,6 +89,16 @@ async function chamar<T>(method: string, path: string, ok: number, body?: unknow
 export const getObrigacoes = () =>
   chamar<{ obrigacoes: Obrigacao[]; resumo?: { vigentes: number; propostas: number }; aviso?: string }>(
     "GET", "/obrigacoes", 200);
+
+/** A matriz como estava num dia (versões em vigor). */
+export const getObrigacoesEm = (dia: string) =>
+  chamar<{ obrigacoes: Obrigacao[] }>("GET", `/obrigacoes?em=${encodeURIComponent(dia)}`, 200);
+
+/** O que cada ato mudou, do mais recente ao mais antigo. Filtra por obrigação ou por ato. */
+export const getLinhaDoTempo = (filtro: { obrigacao_id?: string; ato_id?: string } = {}) => {
+  const q = new URLSearchParams(Object.entries(filtro).filter(([, v]) => v) as [string, string][]).toString();
+  return chamar<{ eventos: Historico[]; aviso?: string }>("GET", `/linha-do-tempo${q ? `?${q}` : ""}`, 200);
+};
 
 /** Todas as versões e o histórico de uma obrigação. */
 export const getObrigacao = (id: string) =>

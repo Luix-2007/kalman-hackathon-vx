@@ -11,6 +11,7 @@ const STACK = {
   userPoolId: "us-east-1_MmMe6Ii7z",
   userPoolClientId: "7d9om4gaq7b24kbn1augsijj29",
   matrizApiUrl: "https://ooe7nuoz9l.execute-api.us-east-1.amazonaws.com", // stack matriz-api
+  chatbotApiUrl: "https://idgv0m8bmd.execute-api.us-east-1.amazonaws.com", // stack chatbot-api
 };
 
 export const config = {
@@ -19,6 +20,8 @@ export const config = {
   userPoolClientId: (import.meta.env.VITE_USER_POOL_CLIENT_ID as string | undefined) || STACK.userPoolClientId,
   // API da matriz de obrigações (stack matriz-api): base do dashboard
   matrizApiUrl: (import.meta.env.VITE_MATRIZ_API_URL as string | undefined) || STACK.matrizApiUrl,
+  // API do assistente (stack chatbot-api)
+  chatbotApiUrl: (import.meta.env.VITE_CHATBOT_API_URL as string | undefined) || STACK.chatbotApiUrl,
 };
 
 export const configured = Boolean(config.apiUrl && config.userPoolId && config.userPoolClientId);

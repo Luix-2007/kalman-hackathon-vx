@@ -1,0 +1,65 @@
+{
+  "Comment": "Propostas do DOU: indexa os atos novos, recupera candidatos por empresa, tria, extrai, verifica e grava (um par empresa x ato por vez)",
+  "StartAt": "Indexar",
+  "TimeoutSeconds": 10800,
+  "States": {
+    "Indexar": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {"FunctionName": "${IndexarFunctionArn}", "Payload.$": "$"},
+      "OutputPath": "$.Payload",
+      "Retry": [{"ErrorEquals": ["Lambda.ServiceException", "Lambda.TooManyRequestsException", "Lambda.SdkClientException"],
+                 "IntervalSeconds": 10, "MaxAttempts": 3, "BackoffRate": 2}],
+      "Next": "Recuperar"
+    },
+    "Recuperar": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {"FunctionName": "${RecuperarFunctionArn}",
+                     "Payload": {"run_id.$": "$.run_id", "dia.$": "$.dia", "desde.$": "$.desde"}},
+      "OutputPath": "$.Payload",
+      "Retry": [{"ErrorEquals": ["Lambda.ServiceException", "Lambda.TooManyRequestsException", "Lambda.SdkClientException"],
+                 "IntervalSeconds": 10, "MaxAttempts": 3, "BackoffRate": 2}],
+      "Next": "Processar"
+    },
+    "Processar": {
+      "Type": "Map",
+      "ItemsPath": "$.itens",
+      "MaxConcurrency": 4,
+      "ItemProcessor": {
+        "ProcessorConfig": {"Mode": "INLINE"},
+        "StartAt": "Par",
+        "States": {
+          "Par": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::lambda:invoke",
+            "Parameters": {"FunctionName": "${ProcessarFunctionArn}", "Payload.$": "$"},
+            "OutputPath": "$.Payload",
+            "Retry": [
+              {"ErrorEquals": ["ModeloOcupado"], "IntervalSeconds": 30, "MaxAttempts": 4, "BackoffRate": 2},
+              {"ErrorEquals": ["Lambda.ServiceException", "Lambda.TooManyRequestsException", "Lambda.SdkClientException"],
+               "IntervalSeconds": 10, "MaxAttempts": 3, "BackoffRate": 2}
+            ],
+            "Catch": [{"ErrorEquals": ["States.ALL"], "ResultPath": "$.erro", "Next": "ParFalhou"}],
+            "End": true
+          },
+          "ParFalhou": {
+            "Type": "Pass",
+            "Parameters": {"cnpj.$": "$.cnpj", "ato_id.$": "$.ato_id", "resultado": "erro", "erro.$": "$.erro.Error"},
+            "End": true
+          }
+        }
+      },
+      "ResultPath": "$.resultados",
+      "Next": "Resumir"
+    },
+    "Resumir": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {"FunctionName": "${ResumirFunctionArn}",
+                     "Payload": {"run_id.$": "$.run_id", "dia.$": "$.dia", "resultados.$": "$.resultados"}},
+      "OutputPath": "$.Payload",
+      "End": true
+    }
+  }
+}

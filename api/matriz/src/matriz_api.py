@@ -1,8 +1,10 @@
 """
 API da matriz de obrigações (lê e decide sobre a gold do lakehouse, pelo Athena).
 
-    GET   /obrigacoes                     versão vigente de cada obrigação + propostas pendentes
+    GET   /obrigacoes[?em=AAAA-MM-DD]     versão vigente de cada obrigação + propostas pendentes
+                                          (com `em`: as versões em vigor naquele dia)
     GET   /obrigacoes/{id}                todas as versões e o histórico de uma obrigação
+    GET   /linha-do-tempo[?obrigacao_id=&ato_id=]   o que cada ato mudou, do mais recente ao mais antigo
     POST  /obrigacoes/{id}/decisao        {"versao": 2, "decisao": "aprovar"|"rejeitar", "comentario"?}
     GET   /tarefas[?em_risco=true&obrigacao_id=OBR-1]
     PATCH /tarefas/{id}                   {"status": "aberta"|"em_andamento"|"concluida", "evidencia_url"?}
@@ -16,6 +18,14 @@ membros leem, só o dono decide e muda status (403).
 Uma decisão grava em bronze_db.matriz_decisoes (fonte de verdade, o job refaz a gold a partir
 dela) e já aplica na gold, para o front ver na hora: status e vigência das versões, histórico e
 as tarefas da obrigação, recalculadas com regras_matriz (o mesmo código do job).
+
+O Athena não tem transação entre tabelas, então a decisão segue uma ordem que não perde nada:
+  1. trava (cnpj, obrigação, versão) no DynamoDB, condicional: duas decisões ao mesmo tempo
+     (clique duplo, duas abas) não passam as duas, a segunda recebe 409;
+  2. só começa a gravar se a Lambda ainda tem MIN_MS_PARA_GRAVAR pela frente (503 sem gravar nada);
+  3. grava a decisão na bronze, sozinha. Se falhar, solta a trava: nada mudou, dá para repetir;
+  4. aplica na gold. Se falhar aqui, a decisão já vale (está na bronze) e o próximo processamento
+     da matriz refaz a gold; o cliente recebe 502 dizendo isso, e a trava fica.
 """
 
 from __future__ import annotations
@@ -25,10 +35,12 @@ import json
 import logging
 import os
 import re
+import time
 import uuid
 from datetime import date, datetime, timedelta, timezone
 
 import boto3
+from botocore.exceptions import ClientError
 
 import athena
 import importacao
@@ -39,12 +51,19 @@ log = logging.getLogger()
 log.setLevel(os.environ.get("LOG_LEVEL", "INFO"))
 
 TABLE_NAME = os.environ.get("TABLE_NAME", "usuarios-cnpj")
+TRAVAS_TABLE = os.environ.get("TRAVAS_TABLE", "matriz-travas")
+MIN_MS_PARA_GRAVAR = int(os.environ.get("MIN_MS_PARA_GRAVAR", "12000"))   # bronze + gold, com folga
+TRAVA_DIAS = 7       # depois disso o job já refez a gold e a versão não está mais como proposta
 BRASILIA = timezone(timedelta(hours=-3))
 URL = re.compile(r"^https?://\S{1,1990}$")
 
 _table = boto3.resource("dynamodb").Table(TABLE_NAME)
+_travas = boto3.resource("dynamodb").Table(TRAVAS_TABLE)
 
 SEM_MATRIZ = "a matriz desta empresa ainda não foi processada"
+JA_DECIDIDA = "esta versão já foi decidida ou está sendo decidida agora"
+SEM_TEMPO = "a matriz demorou para responder; nada foi gravado, tente de novo"
+GOLD_PENDENTE = "a decisão foi registrada, mas a matriz ainda não mostra; ela se atualiza no próximo processamento"
 
 
 class ErroApi(Exception):
@@ -107,6 +126,12 @@ def _obrigacao(linha: dict) -> dict:
     return o
 
 
+def _evento(linha: dict) -> dict:
+    e = dict(linha)
+    e["alteracoes"] = json.loads(e["alteracoes"]) if e.get("alteracoes") else []
+    return e
+
+
 def _tarefa(linha: dict) -> dict:
     t = dict(linha)
     if isinstance(t.get("atualizada_em"), str):
@@ -130,7 +155,14 @@ def _consultar(q: str) -> list[dict] | None:
 
 # ---------------------------------------------------------------- rotas de leitura
 
-def listar_obrigacoes(cnpj: str) -> dict:
+def listar_obrigacoes(cnpj: str, em: str | None = None) -> dict:
+    if em:
+        try:
+            dia = date.fromisoformat(em)
+        except ValueError:
+            raise ErroApi(400, "em deve ser AAAA-MM-DD") from None
+        linhas = _consultar(sql.obrigacoes_em(cnpj, dia))
+        return resp(200, {"cnpj": cnpj, "em": em, "obrigacoes": [_obrigacao(l) for l in linhas or []]})
     linhas = _consultar(sql.obrigacoes_atuais(cnpj))
     if linhas is None:
         return resp(200, {"cnpj": cnpj, "obrigacoes": [], "aviso": SEM_MATRIZ})
@@ -146,7 +178,17 @@ def detalhar_obrigacao(cnpj: str, obrigacao_id: str) -> dict:
         raise ErroApi(404, "obrigação não encontrada")
     historico = _consultar(sql.historico_da_obrigacao(cnpj, obrigacao_id)) or []
     return resp(200, {"obrigacao_id": obrigacao_id, "versoes": [_obrigacao(v) for v in versoes],
-                      "historico": historico})
+                      "historico": [_evento(h) for h in historico]})
+
+
+def linha_do_tempo(cnpj: str, params: dict) -> dict:
+    ato_id = params.get("ato_id") or None
+    if ato_id and (len(ato_id) > 200 or not re.fullmatch(r"[\w.:#/-]+", ato_id)):
+        raise ErroApi(400, "ato_id inválido")
+    linhas = _consultar(sql.linha_do_tempo(cnpj, params.get("obrigacao_id") or None, ato_id))
+    if linhas is None:
+        return resp(200, {"cnpj": cnpj, "eventos": [], "aviso": SEM_MATRIZ})
+    return resp(200, {"cnpj": cnpj, "eventos": [_evento(l) for l in linhas]})
 
 
 def listar_tarefas(cnpj: str, params: dict) -> dict:
@@ -182,7 +224,27 @@ def recalcular_tarefas(cnpj: str, obrigacao_id: str, versoes: list[dict], hoje: 
     return regras.consolidar_tarefas(geradas, anteriores, {}, vigentes, pendentes, hoje, agora)
 
 
-def decidir(user_id: str, cnpj: str, papel: str, obrigacao_id: str, corpo: dict) -> dict:
+def travar_decisao(cnpj: str, obrigacao_id: str, versao: int) -> str:
+    """Só uma decisão por versão passa daqui (put condicional). 409 para a segunda."""
+    chave = f"{cnpj}#{obrigacao_id}#v{versao}"
+    try:
+        _travas.put_item(Item={"chave": chave, "expira_em": int(time.time()) + TRAVA_DIAS * 86400},
+                         ConditionExpression="attribute_not_exists(chave)")
+    except ClientError as exc:
+        if exc.response["Error"]["Code"] == "ConditionalCheckFailedException":
+            raise ErroApi(409, JA_DECIDIDA) from None
+        raise
+    return chave
+
+
+def tem_tempo_para_gravar(context) -> bool:
+    """Sem contexto (testes, chamada direta) não há limite conhecido."""
+    if context is None or not hasattr(context, "get_remaining_time_in_millis"):
+        return True
+    return context.get_remaining_time_in_millis() >= MIN_MS_PARA_GRAVAR
+
+
+def decidir(user_id: str, cnpj: str, papel: str, obrigacao_id: str, corpo: dict, context=None) -> dict:
     so_dono(papel)
     decisao, versao = corpo.get("decisao"), corpo.get("versao")
     if decisao not in ("aprovar", "rejeitar"):
@@ -205,24 +267,43 @@ def decidir(user_id: str, cnpj: str, papel: str, obrigacao_id: str, corpo: dict)
     regras.aplicar_decisao(versoes, alvo, decisao, user_id, agora)
     novas = recalcular_tarefas(cnpj, obrigacao_id, versoes, hoje, agora)
 
+    if not tem_tempo_para_gravar(context):
+        log.warning("cnpj %s: decisão de %s v%s recusada antes de gravar, pouco tempo restante", cnpj, obrigacao_id, versao)
+        raise ErroApi(503, SEM_TEMPO)
+    trava = travar_decisao(cnpj, obrigacao_id, versao)
+
+    # 1. a decisão em si (fonte de verdade), sozinha: se falhar, nada mudou
+    try:
+        athena.executar(sql.inserir_decisao({
+            "decisao_id": str(uuid.uuid4()), "tipo": "obrigacao", "cnpj": cnpj, "obrigacao_id": obrigacao_id,
+            "versao": versao, "decisao": decisao, "usuario": user_id, "comentario": comentario,
+            "decidida_em": agora}))
+    except athena.ErroAthena:
+        _travas.delete_item(Key={"chave": trava})
+        raise
+
+    # 2. a gold, para o front ver na hora. Daqui em diante a decisão vale mesmo se algo falhar.
     escritas = [
-        sql.inserir_decisao({"decisao_id": str(uuid.uuid4()), "tipo": "obrigacao", "cnpj": cnpj,
-                             "obrigacao_id": obrigacao_id, "versao": versao, "decisao": decisao,
-                             "usuario": user_id, "comentario": comentario, "decidida_em": agora}),
         sql.inserir_historico({"cnpj": cnpj, "obrigacao_id": obrigacao_id, "versao": versao,
                                "evento": "aprovacao" if decisao == "aprovar" else "rejeicao",
                                "status": alvo["status"], "origem": alvo.get("origem"), "ocorrido_em": hoje,
-                               "por": user_id,
+                               "por": user_id, "ato_id": alvo.get("alterada_por"), "ato_url": alvo.get("fonte_url"),
+                               "data_ato": alvo.get("data_ato"), "trecho_citado": alvo.get("trecho_citado"),
                                "resumo": f"{'aprovada' if decisao == 'aprovar' else 'rejeitada'} pelo dono"}),
         sql.apagar_tarefas_da_obrigacao(cnpj, obrigacao_id),
     ]
     update = sql.atualizar_versoes(cnpj, obrigacao_id, antes, versoes)
     if update:
         escritas.append(update)
-    athena.em_paralelo(*escritas)
-    inserir = sql.inserir_tarefas(novas)
-    if inserir:
-        athena.executar(inserir)
+    try:
+        athena.em_paralelo(*escritas)
+        inserir = sql.inserir_tarefas(novas)
+        if inserir:
+            athena.executar(inserir)
+    except athena.ErroAthena:
+        log.exception("cnpj %s: %s %s v%s registrada na bronze, mas a gold ficou incompleta; "
+                      "o próximo processamento da matriz corrige", cnpj, decisao, obrigacao_id, versao)
+        raise ErroApi(502, GOLD_PENDENTE) from None
     log.info("cnpj %s: %s %s v%s por %s", cnpj, decisao, obrigacao_id, versao, user_id)
     return resp(200, {"obrigacao_id": obrigacao_id, "versoes": versoes,
                       "tarefas": [_json_tarefa(t) for t in novas]})
@@ -273,11 +354,13 @@ def handler(event, context=None):
         if query.get("obrigacao_id") and not sql.ID.match(query["obrigacao_id"]):
             raise ErroApi(400, "obrigacao_id inválido")
         if rota == "GET /obrigacoes":
-            return listar_obrigacoes(cnpj)
+            return listar_obrigacoes(cnpj, query.get("em"))
+        if rota == "GET /linha-do-tempo":
+            return linha_do_tempo(cnpj, query)
         if rota == "GET /obrigacoes/{id}":
             return detalhar_obrigacao(cnpj, params["id"])
         if rota == "POST /obrigacoes/{id}/decisao":
-            return decidir(user_id, cnpj, papel, params["id"], _corpo(event))
+            return decidir(user_id, cnpj, papel, params["id"], _corpo(event), context)
         if rota == "GET /tarefas":
             return listar_tarefas(cnpj, query)
         if rota == "PATCH /tarefas/{id}":
@@ -298,5 +381,6 @@ def handler(event, context=None):
     except sql.ValorInvalido as exc:
         return resp(400, {"erro": str(exc)})
     except athena.ErroAthena as exc:
+        # o motivo (nomes de tabela, trecho do SQL) fica só no log; o cliente recebe a mensagem genérica
         log.exception("erro no Athena")
-        return resp(502, {"erro": "não foi possível consultar a matriz agora, tente de novo", "detalhe": str(exc)[:300]})
+        return resp(502, {"erro": "não foi possível consultar a matriz agora, tente de novo"})

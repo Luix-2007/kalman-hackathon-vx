@@ -178,7 +178,7 @@ export const demoMatriz = {
         periodicidade: r.periodicidade || null, prazo_regra: r.prazo_regra || null, prazo_json: r.prazo_json || null,
         area_responsavel: r.area_responsavel || null, evidencia: r.evidencia || null, criticidade: (r.criticidade || null) as Obrigacao["criticidade"],
         origem: "matriz_importada", status: "aprovada", confianca: null, incluida_em: agora.slice(0, 10), alterada_por: null,
-        vigente: true, mudanca: "inclusao",
+        vigente: true, mudanca: "inclusao", data_ato: null, vigente_de: agora.slice(0, 10), vigente_ate: null,
       }));
     }
     return { arquivo, enviado_em: agora, processamento: processamentoDemo };

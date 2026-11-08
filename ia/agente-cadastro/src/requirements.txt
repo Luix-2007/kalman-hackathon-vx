@@ -1,0 +1,13 @@
+# Agente Bedrock AgentCore — dependências do container
+# Compatível com Python 3.12, ARM64 (linux/arm64)
+
+# Framework do agente e SDK do AgentCore
+strands-agents>=0.1.0
+bedrock-agentcore>=0.1.0
+bedrock-agentcore-starter-toolkit>=0.1.0
+
+# Servidor ASGI usado pelo BedrockAgentCoreApp.run()
+uvicorn[standard]>=0.30.0
+
+# SDK AWS (versão próxima à usada no resto do projeto)
+boto3>=1.42.0

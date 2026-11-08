@@ -1,0 +1,124 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  API do chatbot: única porta de entrada para o agente da Kalman (AgentCore). Valida o login
+  (Cognito), descobre o CNPJ do usuário na tabela do cadastro (só leitura), limita mensagens
+  por usuário e invoca o runtime por IAM.
+
+Parameters:
+  UserPoolId:
+    Type: String
+    Description: Output UserPoolId do stack cnpj-cadastro (o Makefile resolve)
+  UserPoolClientId:
+    Type: String
+    Description: Output UserPoolClientId do stack cnpj-cadastro
+  CadastroTableName:
+    Type: String
+    Description: Output TableName do stack cnpj-cadastro (só leitura, para achar o CNPJ e o papel)
+  AgentRuntimeArn:
+    Type: String
+    Description: Output AgentRuntimeArn do stack chatbot-agent (o Makefile resolve)
+  AllowedOrigins:
+    Type: CommaDelimitedList
+    Default: "http://localhost:3000,http://localhost:5173"
+    Description: Endereços do front (CORS)
+  LimitePorHora:
+    Type: Number
+    Default: 20
+    MinValue: 1
+    Description: Mensagens por usuário por hora
+  LimitePorDia:
+    Type: Number
+    Default: 100
+    MinValue: 1
+    Description: Mensagens por usuário por dia
+  RetencaoDoLog:
+    Type: Number
+    Default: 30
+    Description: Dias que o log da Lambda fica no CloudWatch (traz CNPJ e um identificador curto do usuário)
+
+Resources:
+  ChatbotApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      Auth:
+        DefaultAuthorizer: CognitoAuthorizer
+        Authorizers:
+          CognitoAuthorizer:
+            IdentitySource: $request.header.Authorization
+            JwtConfiguration:
+              issuer: !Sub https://cognito-idp.${AWS::Region}.amazonaws.com/${UserPoolId}
+              audience:
+                - !Ref UserPoolClientId
+      CorsConfiguration:
+        AllowOrigins: !Ref AllowedOrigins
+        AllowMethods: [POST, OPTIONS]
+        AllowHeaders: [content-type, authorization]
+      DefaultRouteSettings:      # camada extra ao limite por usuário: freia rajadas
+        ThrottlingBurstLimit: 10
+        ThrottlingRateLimit: 5
+
+  # Contador de mensagens por usuário e janela (hora e dia); o TTL apaga as linhas vencidas.
+  LimitesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: chave
+          AttributeType: S
+      KeySchema:
+        - AttributeName: chave
+          KeyType: HASH
+      TimeToLiveSpecification:
+        AttributeName: expira_em
+        Enabled: true
+
+  ChatbotLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${AWS::StackName}-chatbot
+      RetentionInDays: !Ref RetencaoDoLog
+
+  ChatbotFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: chatbot_api.handler
+      Runtime: python3.13
+      Architectures: [arm64]
+      MemorySize: 256
+      Timeout: 29              # limite de integração do HTTP API é 30 s; o agente tem 26 s
+      LoggingConfig:
+        LogGroup: !Ref ChatbotLogGroup
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref CadastroTableName
+          LIMITES_TABLE: !Ref LimitesTable
+          AGENT_RUNTIME_ARN: !Ref AgentRuntimeArn
+          LIMITE_HORA: !Ref LimitePorHora
+          LIMITE_DIA: !Ref LimitePorDia
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref CadastroTableName
+        - Statement:
+            - Sid: ContarMensagens
+              Effect: Allow
+              Action: [dynamodb:UpdateItem]
+              Resource: !GetAtt LimitesTable.Arn
+            - Sid: InvocarSoOAgenteDaKalman
+              Effect: Allow
+              Action: bedrock-agentcore:InvokeAgentRuntime
+              Resource:
+                - !Ref AgentRuntimeArn
+                - !Sub ${AgentRuntimeArn}/runtime-endpoint/*
+      Events:
+        Mensagem:
+          Type: HttpApi
+          Properties: { ApiId: !Ref ChatbotApi, Method: POST, Path: /chatbot/mensagens }
+
+Outputs:
+  ApiUrl:
+    Description: "URL base para o front: POST {ApiUrl}/chatbot/mensagens"
+    Value: !Sub https://${ChatbotApi}.execute-api.${AWS::Region}.amazonaws.com
+  FunctionName:
+    Value: !Ref ChatbotFunction
