@@ -13,6 +13,7 @@ dependencies = [
 dev = [
     "boto3",
     "jsonschema",      # valida os exemplos de resposta contra contrato/schema.json
+    "numpy>=2.5.4",
     "pytest",
 ]
 

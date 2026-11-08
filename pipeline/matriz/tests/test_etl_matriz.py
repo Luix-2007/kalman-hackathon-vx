@@ -299,3 +299,18 @@ def test_data_publicacao_invalida_vai_para_quarentena(aurora):
     roda(aurora, agora=datetime(2026, 11, 7, 14))
     c = [c for c in linhas(aurora, etl.SILVER_CANDIDATAS) if c["origem"] == "llm"][0]
     assert not c["valida"] and any("data_publicacao" in e for e in c["erros"])
+
+
+# ---------------------------------------------------------------- contrato com ia/propostas
+
+def test_arquivo_gerado_pelo_passo_de_propostas_entra_valido(aurora):
+    """O passo de propostas do DOU (ia/propostas) grava este formato; o teste de lá confere que a
+    fixture é exatamente o que ele gera. Aqui, o ETL tem de aceitá-lo sem quarentena."""
+    gerado = RAIZ / "ia/propostas/tests/fixtures/proposta_dcr.json"
+    copia(aurora, gerado, "propostas_llm", "2026-11-08", "dou-2026-11-07-s1-000013__KALMANTESTE100.json")
+    nb, ns, _ = roda(aurora, agora=datetime(2026, 11, 8, 6))
+    assert nb["matriz_propostas_llm"] == 1 and ns["quarentena"] == 0
+    cand = [c for c in linhas(aurora, etl.SILVER_CANDIDATAS) if c["origem"] == "llm"]
+    assert len(cand) == 1 and cand[0]["valida"], cand[0]["erros"]
+    v2 = obrigacoes(aurora)[("OBR-013", 2)]
+    assert v2["status"] == "proposta" and "31/03" in v2["prazo_json"] and v2["area_responsavel"] == "GCTR"
