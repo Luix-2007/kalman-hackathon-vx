@@ -1,5 +1,17 @@
 # kalman-hackathon-vx
 
+## ⚠️ Publicação na AWS: uma branch por vez
+
+Cada `sam deploy` publica **o código da branch de quem roda**. Em 07 e 08/11, deploys de branches diferentes
+desfizeram o trabalho uma da outra três vezes (o e-mail do código voltou ao padrão em inglês, sumiram as rotas de
+envio da planilha e os campos da conferência deixaram de ser aceitos). Antes de publicar `cnpj-cadastro` ou
+`matriz-api`, traga para a sua branch o que já está publicado (hoje: `feat/front-kalman`) e confira depois:
+
+```bash
+aws cognito-idp describe-user-pool --user-pool-id <pool> --query "UserPool.LambdaConfig.CustomMessage"   # gatilho do e-mail
+aws apigatewayv2 get-routes --api-id <matriz-api> --query "Items[].RouteKey"                           # inclui /importacoes
+```
+
 ## api/cnpj-cadastro
 
 Cadastro de usuários pessoa jurídica: login com **Amazon Cognito**, consulta do CNPJ no [OpenCNPJ](https://api.opencnpj.org) e dados salvos no DynamoDB.
@@ -290,17 +302,36 @@ com dados reais sem deploy e a **ordem de deploy** em [ia/propostas/README.md](i
 
 ## front/cadastro-teste
 
-Front de **teste** do fluxo completo: login no Cognito, envio do CNPJ, espera pela consulta, formulário pré-preenchido com os dados da Receita e organização (convidar, aceitar convite, remover membros). Foi feito com Vite, React, TypeScript e Amplify, a mesma base do Lovable. O arquivo `src/api.ts` é o cliente da API que serve de referência para o front definitivo.
+Front do Kalman na identidade **Laudo** (branch `feat/front-kalman`): landing, login e cadastro reais no Cognito,
+conferência dos dados da empresa e envio da matriz de obrigações. Vite, React, TypeScript, Amplify e React Router, a
+mesma base do Lovable. Detalhe de cada tela, regra e teste em `front/cadastro-teste/TELAS.md`.
 
 ```bash
-make front-env     # gera front/cadastro-teste/.env com os outputs da stack (precisa de credenciais AWS)
 make front-dev     # http://localhost:5173 (porta fixa: é a que está liberada no CORS)
 make front-check   # typecheck
 ```
 
-Com `VITE_MATRIZ_API_URL` no `.env` (o `make front-env` preenche se a stack `matriz-api` existir) aparece a tela da matriz: propostas para aprovar ou rejeitar, tarefas com status e as obrigações vigentes com o histórico. O cliente está em `src/matriz.ts`.
+O `.env` é opcional: sem ele, `src/config.ts` usa os valores públicos das stacks publicadas (`cnpj-cadastro`,
+`matriz-api`, `chatbot-api`). Se uma stack for recriada, troque os valores do `STACK` em `src/config.ts`.
 
-Os campos do perfil ficam em `src/campos.ts`, espelhando `src/perfil.py` da API: texto, opções, listas como chips (UFs, órgãos, temas) e linhas repetíveis (unidades, outorgas, áreas).
+| Rota | Tela |
+|---|---|
+| `/` | Landing (`src/landing/`), portada da versão aprovada em HTML |
+| `/entrar`, `/criar-conta`, `/esqueci-senha` | Acesso. Criar conta pede CNPJ (conferido na hora: dígitos + OpenCNPJ), nome, e-mail e senha; o código de 6 dígitos chega por e-mail |
+| `/painel` | Uma página em 3 etapas liberadas uma de cada vez: **1. Dados da empresa** (conferir e confirmar) → **2. Matriz de obrigações** (enviar a planilha; a análise roda em segundo plano) → **3. Revisão** (resumo e "Concluir cadastro") |
+| `/privacidade`, `/termos` | Páginas legais |
+
+Modo demonstração, só em `npm run dev`: `/entrar?demo` e `/painel?demo=dados|vazio|membro|convite` (sem Cognito e sem
+API; a empresa é a Light, com os dados de `src/dados/light-opencnpj.json`).
+
+Arquivos principais: `src/App.tsx` (rotas, acesso, painel, conferência, equipe), `src/TelaMatriz.tsx` +
+`src/planilha.ts` (envio e conferência da planilha com as regras do job), `src/cnpj.ts`, `src/api.ts` e `src/matriz.ts`
+(clientes das APIs). `Chatbot.tsx`, `BlocosChat.tsx` e `Matriz.tsx` são do front de teste do Gabriel e ainda não entram
+nas telas (o chat e a linha do tempo serão trazidos para o painel).
+
+⚠️ Windows: `src/Matriz.tsx` e `src/matriz.ts` só diferem em maiúscula. No Windows, `import "./Matriz"` cai no
+`matriz.ts` e a página abre em branco. As telas novas importam `./matriz` (o cliente). Renomeie um dos dois quando o
+`Matriz.tsx` for usado.
 
 ### Front no Lovable: cuidados
 

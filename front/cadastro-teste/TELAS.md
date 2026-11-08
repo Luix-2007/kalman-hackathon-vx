@@ -174,7 +174,10 @@ base do dashboard. Arquivos: `src/TelaMatriz.tsx` (tela), `src/planilha.ts` (lei
 
 Gatilho **CustomMessage** (`api/cnpj-cadastro/src/email_cognito.py`, publicado em 07/11): assunto e HTML na identidade
 Laudo para cadastro, reenvio e "esqueci a senha" (textos diferentes). Remetente continua o padrão do Cognito
-(`no-reply@verificationemail.com`, limite baixo por dia); remetente próprio exige SES.
+(`no-reply@verificationemail.com`, limite baixo por dia); remetente próprio exige SES. Sem `<title>` (alguns leitores
+mostram o texto dele no topo do e-mail) e sem `<h1>` (alguns aplicam a fonte deles): o título é um `<div>`. O logo é
+texto ("kalman" + ponto laranja): imagem precisa de um endereço público, o que fica para quando o front for publicado.
+Recebido de verdade em 08/11 (temp mail), com o visual certo.
 
 ## Vínculo da conta com o CNPJ
 1. Em **Criar conta**, o CNPJ vai para o `localStorage` (`kalman:cnpj-da-conta`) antes do `signUp`.
@@ -187,10 +190,27 @@ recebe e-mail) → entrar → consulta automática do CNPJ → salvar formulári
 → aceitar → modo membro. Usuários e itens de teste apagados no fim. As telas de "esqueci a senha" foram vistas no modo
 demo; o envio real do código ainda precisa de uma pessoa com caixa de entrada.
 
+## Testes de 08/11
+- Fluxo do painel no modo demo, como dono e como membro: confirmar dados → matriz liberada → enviar a planilha da Ampla
+  (25 de 25 válidas) → revisão liberada e página rolando para ela → análise simulada termina → obrigações e resumo
+  atualizam sozinhos → "Concluir cadastro".
+- AWS, depois do merge com `chatbot-respostas-estruturadas` e do novo deploy: gatilho do e-mail ligado, `matriz-api`
+  com as 8 rotas (`/linha-do-tempo` do Gabriel e `/importacoes`), leituras reais 200 com usuário temporário (apagado),
+  smoke do cadastro 35/35, 182 testes da API.
+- Envio real: a planilha da Ampla enviada pela tela às 09:11 foi processada às 09:17 (o Glue repetiu a etapa Bronze uma
+  vez por `ConcurrentRunsExceeded`, o que é esperado: uma execução por vez).
+
 ## Pendências
-1. Testar com um e-mail de verdade: receber o código (cadastro e esqueci a senha) e ver o e-mail no Gmail/Outlook.
-2. CORS: incluir a URL da Lovable em `AllowedOrigins` e publicar (`sam deploy --parameter-overrides ...`).
-3. Lovable: o app precisa estar na raiz de um repositório (hoje está em `front/cadastro-teste/`) e a hospedagem precisa
-   do fallback de SPA para as rotas.
-4. `custom:cnpj` no Cognito, para o vínculo valer fora do navegador.
-5. E-mail de convite e e-mail de alerta de normas (depois do dashboard, quando os campos do alerta estiverem definidos).
+1. **Dashboard:** obrigações, tarefas e normas do dia; aviso de "análise em andamento" e **e-mail quando a análise da
+   matriz terminar**; e-mail de alerta de normas (quando os campos do alerta estiverem definidos).
+2. **Configurações:** equipe (o componente `Equipe` já existe, exportado no `App.tsx`), editar o nome (`name` no
+   Cognito), unidades, áreas e outorgas do perfil (sem unidades, a planilha precisa vir com `aplica_a` vazio).
+3. **"Concluir cadastro" na API:** hoje fica só no navegador (`localStorage`, por CNPJ). Para o dashboard saber que o
+   cadastro terminou, criar um campo em `perfil.py` (como os `conferido_*`). O mesmo vale para "Pular esta etapa".
+4. **Assistente e linha do tempo** do front do Gabriel (`Chatbot.tsx`, `BlocosChat.tsx`, `Matriz.tsx`) no painel, na
+   identidade Laudo.
+5. **Lovable:** o app precisa estar na raiz de um repositório (hoje está em `front/cadastro-teste/`), a hospedagem
+   precisa do fallback de SPA para as rotas, e a URL dela precisa entrar no `AllowedOrigins` das stacks (CORS).
+6. `custom:cnpj` no Cognito, para o vínculo conta → CNPJ valer fora do navegador.
+7. Logo de verdade no e-mail do código (imagem num endereço público) e remetente próprio (SES).
+8. E-mail de convite (hoje o convite não envia e-mail).
