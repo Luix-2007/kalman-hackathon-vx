@@ -7,6 +7,8 @@ export const config = {
   userPoolClientId: import.meta.env.VITE_USER_POOL_CLIENT_ID as string | undefined,
   // opcional: com ele aparece a tela da matriz de obrigações (stack matriz-api)
   matrizApiUrl: import.meta.env.VITE_MATRIZ_API_URL as string | undefined,
+  // opcional: com ele aparece o painel do assistente (stack chatbot-api)
+  chatbotApiUrl: import.meta.env.VITE_CHATBOT_API_URL as string | undefined,
 };
 
 export const configured = Boolean(config.apiUrl && config.userPoolId && config.userPoolClientId);

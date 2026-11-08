@@ -128,3 +128,11 @@ li.evento::before { content: ""; position: absolute; left: -19px; top: 9px; widt
 li.evento.alteracao::before, li.evento.revogacao::before { background: var(--aviso); }
 li.evento.aprovacao::before { background: var(--ok); }
 li.evento.rejeicao::before { background: var(--erro); }
+.chat { display: flex; flex-direction: column; gap: 8px; max-height: 420px; overflow-y: auto; padding: 4px 0; }
+.balao { max-width: 88%; padding: 8px 12px; border-radius: 10px; font-size: 14px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.balao.usuario { align-self: flex-end; background: var(--info-bg); }
+.balao.assistente { align-self: flex-start; background: var(--bg); border: 1px solid var(--border); }
+.balao.erro { align-self: flex-start; background: var(--erro-bg); color: var(--erro); }
+.balao.pensando { color: var(--muted); font-style: italic; }
+.sugestoes { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+button.chip-botao { background: var(--info-bg); color: var(--text); font-weight: 500; font-size: 13px; padding: 6px 12px; border-radius: 99px; text-align: left; }

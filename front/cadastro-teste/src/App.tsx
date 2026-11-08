@@ -27,6 +27,7 @@ import {
 } from "./api";
 import { CAMPOS, GRUPOS, paraEnvio, valorInicial, type Campo, type Linha, type Valor } from "./campos";
 import { config, configured } from "./config";
+import { Chatbot } from "./Chatbot";
 import { Matriz } from "./Matriz";
 
 // ---------- utilidades ----------
@@ -110,6 +111,7 @@ export default function App() {
       <footer className="sub">
         API: <code>{config.apiUrl}</code> · User Pool: <code>{config.userPoolId}</code>
         {config.matrizApiUrl && <> · Matriz: <code>{config.matrizApiUrl}</code></>}
+        {config.chatbotApiUrl && <> · Assistente: <code>{config.chatbotApiUrl}</code></>}
       </footer>
     </main>
   );
@@ -306,6 +308,8 @@ function Cadastrar() {
       {cadastro && <Organizacao key={cadastro.cnpj} cadastro={cadastro} onSaiu={() => setCadastro(null)} />}
 
       {cadastro && config.matrizApiUrl && <Matriz key={`matriz-${cadastro.cnpj}`} souMembro={souMembro} />}
+
+      {cadastro && config.chatbotApiUrl && <Chatbot key={`chatbot-${cadastro.cnpj}`} />}
     </>
   );
 }
