@@ -140,27 +140,78 @@ make matriz-deploy   # sam deploy; resolve User Pool, tabela, bucket e workgroup
 
 ## api/chatbot
 
-Agente da Kalman (`agent.py`, Strands + Bedrock AgentCore). Responde só com dados do Athena (`gold_db`), sempre filtrando pelo `user_id` do payload.
+Assistente da Kalman: responde, em português, sobre a empresa do usuário, os atos do DOU e a matriz de obrigações (obrigações, tarefas, linha do tempo dos atos), só com dados do Athena (`gold_db`).
 
-No mesmo formato das outras APIs (JSON com chaves em português, erros como `{"erro": "..."}`):
+```
+Front ──Bearer (Cognito)──> HTTP API ──> Lambda chatbot-api ──IAM──> Runtime AgentCore (agent.py) ──> Athena, Bedrock + Guardrail
+                                           │ lê o CNPJ e o papel na tabela do cadastro (só leitura)
+                                           └ limita as mensagens por usuário (DynamoDB)
+```
+
+São duas stacks: **`chatbot-agent`** (runtime, role e Guardrail, em `api/chatbot/runtime/`) e **`chatbot-api`** (a Lambda de entrada, em `api/chatbot/src/`).
+
+### API de entrada
+
+`POST /chatbot/mensagens` com `{"prompt": "...", "session_id": "opcional"}`, header `Authorization: Bearer <access token do Cognito>` (o mesmo login do cadastro).
+
+| Resposta | Quando |
+|---|---|
+| **200** `{"resposta": "texto"}` | ok. A resposta é texto: mostre como texto, nunca como HTML |
+| **400** | JSON inválido, `prompt` vazio ou com mais de 2000 caracteres, `session_id` inválido |
+| **401 / 404** | sem token / usuário sem organização (envie um CNPJ ou aceite um convite) |
+| **429** + `Retry-After` | passou de 20 mensagens por hora ou 100 por dia (configurável no template) |
+| **502 / 504** | o agente falhou (mensagem genérica; o motivo fica só no log) / demorou mais de ~26 s |
+
+Quem garante a identidade é a Lambda: o `sub` vem do token, o CNPJ vem da tabela do cadastro (nunca do corpo), e a sessão do runtime é `sha256(sub:session_id)`, então ninguém entra na conversa de outro usuário. Dono e membros conversam (é leitura). O log tem uma linha por pedido (latência, nº de consultas, resultado, um identificador curto do usuário e o CNPJ), nunca a pergunta, a resposta nem o `sub`; a retenção é de 30 dias.
+
+### Agente (`agent.py`)
+
+Contrato interno, no mesmo formato das outras APIs. Só a Lambda o invoca (o runtime usa autenticação IAM, sem authorizer):
 
 | | Formato |
 |---|---|
-| Entrada | `{"user_id": "<sub do Cognito>", "prompt": "texto de até 4000 caracteres", "session_id": "..."}` (`session_id` só é exigido com `MEMORY_ID`) |
-| Saída | `{"resposta": "texto"}` |
+| Entrada | `{"cnpj": "...", "user_id": "<sub>", "prompt": "...", "session_id": "..."}` (`session_id` só é exigido com `MEMORY_ID`) |
+| Saída | `{"resposta": "texto", "consultas": 2}` |
 | Erro | `{"erro": "mensagem"}` para payload inválido ou falha interna |
 
-O motivo de uma falha (mensagem do Athena, exceção do modelo) fica só no log: nem o cliente nem o modelo recebem o texto original. O agente usa o workgroup `lakehouse-pipeline-lakehouse` (`ATHENA_WORKGROUP`; `ATHENA_OUTPUT` só para um workgroup sem local de saída) e cancela consultas que passam de 25 s. Os testes sem AWS (`api/chatbot/tests/test_agent.py`) rodam em `make api-test`.
+Ferramentas (só leitura, todas com o CNPJ fixado no código: o modelo escolhe a ferramenta e poucos parâmetros, nunca o CNPJ nem o SQL, e todo valor vai como parâmetro da consulta): `painel_da_empresa`, `atos_no_dou`, `atualizacao_dos_dados`, `obrigacoes_da_empresa`, `tarefas`, `linha_do_tempo`, `obrigacao_detalhe`. Nenhuma devolve quem decidiu algo (o `sub` identifica uma pessoa).
+
+Proteções do agente:
+- **Falhas:** o Strands repassa ao modelo a mensagem de qualquer exceção de ferramenta, então toda ferramenta passa por um invólucro que registra o motivo no log e devolve uma mensagem genérica.
+- **Custo:** no máximo 6 consultas por pergunta, 1024 tokens de saída, consultas ao Athena canceladas aos 25 s.
+- **Guardrail do Bedrock** (versão publicada, não o rascunho): ataque de prompt na entrada, filtros de ódio, insultos, violência, conteúdo sexual e conduta imprópria, e-mail e telefone anonimizados, CPF formatado anonimizado, cartão, chaves e senhas bloqueados. Nomes de pessoas não são filtrados, para não quebrar razão social e responsáveis. Para mudar o Guardrail, altere `GuardrailRevisao` no template, senão o CloudFormation não publica uma versão nova.
+- **Prompt do sistema:** o texto vindo das ferramentas (ementas, trechos de atos) é dado, nunca instrução; pedidos sobre outra empresa são recusados.
+
+### Implantação
+
+```bash
+make chatbot-agent-deploy MODEL_ID=<modelo ou perfil de inferência do Bedrock>   # stack chatbot-agent (MEMORY_ID opcional)
+make chatbot-deploy                                                              # stack chatbot-api (precisa do agente antes)
+make front-env                                                                   # o front de teste ganha o painel do assistente
+```
+
+O `chatbot-agent-deploy` gera o zip do agente (dependências do `uv.lock` para Linux arm64, ~30 MB), envia ao bucket do SAM com o hash no nome e implanta. O runtime usa a policy de leitura do lake (`AcessoLeituraGoldPolicy`) porque as views `vw_*` leem silver e gold: o isolamento por empresa é feito no código do agente.
+
+### Testes e avaliação
+
+```bash
+make api-test                                   # sem AWS: agente (contrato, escopo, limites, falhas), Lambda e o harness de avaliação
+make api-chatbot-eval                           # com o modelo de verdade (MODEL_ID), dados fixos
+make api-chatbot-eval ARGS="--dados-reais"      # consulta a Aurora no lake
+make api-chatbot-eval ARGS="--caso outra_empresa --repeticoes 3 --mostrar"
+```
+
+`api/chatbot/evals/casos.json` tem os casos: pergunta sobre a própria empresa, tarefas em risco, quem mudou a OBR-013, quem aprovou, pedido de outra empresa (com e sem instrução no prompt), assunto fora do escopo, pergunta sem dado e uma instrução plantada na ementa de um ato. Em toda resposta o avaliador confere que as consultas usam o CNPJ da sessão, que datas, ids de obrigação e CNPJs citados vieram das ferramentas (ou da pergunta) e que nenhum identificador de usuário aparece.
 
 ### Integração com o cnpj-cadastro
 
 O agente não chama a API do cadastro. O caminho do dado é:
 
 ```
-API cnpj-cadastro ──> DynamoDB ──(pipeline do stack lakehouse-pipeline, todo dia às 2h)──> gold_db.empresas_clientes ──> agent.py (Athena)
+API cnpj-cadastro ──> DynamoDB ──(pipeline do stack lakehouse-pipeline, todo dia às 2h)──> gold_db (views vw_*) ──> agent.py (Athena)
 ```
 
-O contrato é o `user_id`: o `sub` do Cognito que a API grava precisa chegar ao gold, onde o agente filtra `WHERE user_id = '<sub>'`. O pipeline (Step Functions + Glue) fica em `pipeline/cadastro/`.
+O contrato é o **CNPJ**: o da organização que a API grava precisa chegar às views do gold, onde o agente filtra `WHERE cnpj = ?`. Em produção quem descobre o CNPJ do usuário é a Lambda; o teste de integração usa o que o `GET /cadastro/me` devolve. A matriz vem direto de `gold_db.matriz_*` (`pipeline/matriz/`), sem passar pelo pipeline do cadastro.
 
 ```bash
 make api-integracao                    # cadastro -> pipeline -> ferramentas do agente
@@ -171,13 +222,11 @@ O teste (`api/chatbot/tests/integracao_cadastro.py`) usa suas credenciais AWS e:
 
 1. pela API, cria um dono (A), um membro que aceitou o convite (B) e um usuário sem organização (C)
 2. dispara o pipeline do lakehouse e espera terminar (~15 min, por causa do export do DynamoDB)
-3. chama as ferramentas do agente com o `user_id` de cada um: A e B veem a empresa (mesmo CNPJ e razão social do `GET /cadastro/me`) e C não vê nada
-4. confere que o `invoke` recusa `user_id` fora do formato
+3. chama as ferramentas do agente com o CNPJ da organização: A e B (mesma organização) veem a empresa (mesmo CNPJ e razão social do `GET /cadastro/me`), e um CNPJ sem dados não devolve nada
+4. confere que o `invoke` recusa `cnpj` e `user_id` fora do formato
 5. apaga os usuários, os itens do DynamoDB e as linhas deles no silver e no gold (o pipeline só faz upsert e nunca apaga)
 
-Se o pipeline falhar, o tópico de alerta dele recebe o aviso, como numa falha real.
-
-**Pendente (nov/2026):** o ETL já ignora os vínculos `<sub>` e os convites `CONVITE#...`, então a Silver não quebra mais. Mas ele ainda usa a chave do item como `user_id`, e o dado da empresa está no item da organização: no gold, o `user_id` vira `CNPJ#<cnpj>`, e o agente, que filtra pelo `sub`, não encontra nada. Até o ETL gerar uma linha por usuário (dono e membros, ligando `<sub>` -> `cnpj` -> `CNPJ#<cnpj>`) com o `sub` como `user_id`, o teste falha no passo 3.
+Se o pipeline falhar, o tópico de alerta dele recebe o aviso, como numa falha real. Observação: as views `vw_*` não estão no repositório (foram criadas direto no Glue); o agente assume que `vw_painel_empresa` e `vw_empresas_atos` têm a coluna `cnpj`, o que confere com o schema que elas têm hoje.
 
 ## front/cadastro-teste
 
