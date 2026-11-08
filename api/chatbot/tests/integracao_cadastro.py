@@ -79,7 +79,8 @@ class Lakehouse:
                 StackName=stack, LogicalResourceId=logical_id)["StackResourceDetail"]["PhysicalResourceId"]
 
         self.state_machine = recurso("PipelineStateMachine")
-        # O workgroup "primary" não tem local de saída: o agente precisa de ATHENA_OUTPUT.
+        # O agente usa o workgroup do lakehouse (já tem local de saída); ATHENA_OUTPUT só vale
+        # para um workgroup sem local de saída, como o "primary".
         self.athena_output = os.environ.get("ATHENA_OUTPUT") or f"s3://{recurso('LakeBucket')}/athena-results/"
         self.sfn = boto3.client("stepfunctions", region_name=REGION)
         self.athena = boto3.client("athena", region_name=REGION)
@@ -216,12 +217,12 @@ def run(s: Smoke, lake: Lakehouse, args) -> bool:
     print("\n  4. user_id inválido")
     for invalido in (f"CNPJ#{so_digitos(args.cnpj)}", "x' OR '1'='1", ""):
         resp = agent.invoke({"user_id": invalido, "prompt": "qual minha empresa?"})
-        s.check(f"invoke recusa user_id {invalido!r}", "erro" in resp and "answer" not in resp, f"resposta={resp}")
+        s.check(f"invoke recusa user_id {invalido!r}", "erro" in resp and "resposta" not in resp, f"resposta={resp}")
 
     if args.com_llm:
         print("\n  5. agente com o modelo")
         resp = agent.invoke({"user_id": a.sub, "prompt": "Qual é a razão social e o CNPJ da minha empresa?"})
-        resposta = resp.get("answer", "")
+        resposta = resp.get("resposta", "")
         print(f"    {resposta[:300]}")
         primeira_palavra = (razao or "").split()[0].lower() if razao else "\0"
         s.check("resposta cita a empresa", primeira_palavra in resposta.lower()

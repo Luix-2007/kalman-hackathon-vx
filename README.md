@@ -142,6 +142,16 @@ make matriz-deploy   # sam deploy; resolve User Pool, tabela, bucket e workgroup
 
 Agente da Kalman (`agent.py`, Strands + Bedrock AgentCore). Responde só com dados do Athena (`gold_db`), sempre filtrando pelo `user_id` do payload.
 
+No mesmo formato das outras APIs (JSON com chaves em português, erros como `{"erro": "..."}`):
+
+| | Formato |
+|---|---|
+| Entrada | `{"user_id": "<sub do Cognito>", "prompt": "texto de até 4000 caracteres", "session_id": "..."}` (`session_id` só é exigido com `MEMORY_ID`) |
+| Saída | `{"resposta": "texto"}` |
+| Erro | `{"erro": "mensagem"}` para payload inválido ou falha interna |
+
+O motivo de uma falha (mensagem do Athena, exceção do modelo) fica só no log: nem o cliente nem o modelo recebem o texto original. O agente usa o workgroup `lakehouse-pipeline-lakehouse` (`ATHENA_WORKGROUP`; `ATHENA_OUTPUT` só para um workgroup sem local de saída) e cancela consultas que passam de 25 s. Os testes sem AWS (`api/chatbot/tests/test_agent.py`) rodam em `make api-test`.
+
 ### Integração com o cnpj-cadastro
 
 O agente não chama a API do cadastro. O caminho do dado é:
