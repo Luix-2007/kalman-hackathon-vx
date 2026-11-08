@@ -1,0 +1,293 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Agente Bedrock AgentCore para o lakehouse cnpj-cadastro + DOU.
+  Strands agent (Python) com ferramentas Athena (Gold) e Bedrock Knowledge Base.
+  Recursos: ECR, AgentCore Memory, AgentCore Runtime + Endpoint.
+
+Parameters:
+
+  KbId:
+    Type: String
+    Default: ""
+    Description: >
+      ID da Bedrock Knowledge Base (output KbId do stack lakehouse-kb).
+      Vazio = agente opera sem RAG (ferramenta buscar_documentos retorna aviso).
+
+  LakeBucketName:
+    Type: String
+    Description: >
+      Bucket do lake (output LakeBucketName do stack lakehouse-pipeline).
+      Usado para liberar leitura no Athena e gravar os resultados de consulta.
+
+  AthenaWorkgroup:
+    Type: String
+    Default: "lakehouse-pipeline-lakehouse"
+    Description: Workgroup do Athena configurado com local de resultados.
+
+  AgentModelId:
+    Type: String
+    Default: "anthropic.claude-3-5-sonnet-20241022-v2:0"
+    Description: Model ID do Bedrock para o agente (deve estar habilitado na conta).
+
+  MemoryExpiryDays:
+    Type: Number
+    Default: 30
+    MinValue: 3
+    MaxValue: 365
+    Description: Dias para expirar eventos de memória do agente por usuário.
+
+  ImageTag:
+    Type: String
+    Default: ""
+    Description: >
+      Tag da imagem Docker no ECR.
+      Vazio = deploy de bootstrap (cria ECR + Memory sem Runtime).
+      Use "latest" após construir e fazer push da imagem com "make ia-build".
+
+Conditions:
+  TemImagem: !Not [!Equals [!Ref ImageTag, ""]]
+
+Resources:
+
+  # ---------------------------------------------------------------- ECR
+  AgentRepository:
+    Type: AWS::ECR::Repository
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      RepositoryName: !Sub "${AWS::StackName}-agent"
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      LifecyclePolicy:
+        # Mantém as 5 imagens mais recentes para economizar custo de armazenamento.
+        LifecyclePolicyText: |
+          {
+            "rules": [{
+              "rulePriority": 1,
+              "description": "Manter as 5 imagens mais recentes",
+              "selection": {
+                "tagStatus": "any",
+                "countType": "imageCountMoreThan",
+                "countNumber": 5
+              },
+              "action": {"type": "expire"}
+            }]
+          }
+
+  # ---------------------------------------------------------------- IAM — Memory
+  # Role usada pela AgentCore Memory para invocar o Bedrock ao extrair memórias.
+  MemoryRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: bedrock-agentcore.amazonaws.com
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                "aws:SourceAccount": !Ref AWS::AccountId
+      Policies:
+        - PolicyName: memory-extraction
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - bedrock:InvokeModel
+                  - bedrock:InvokeModelWithResponseStream
+                Resource: !Sub
+                  - "arn:${Partition}:bedrock:${Region}::foundation-model/${ModelId}"
+                  - Partition: !Ref AWS::Partition
+                    Region: !Ref AWS::Region
+                    ModelId: !Ref AgentModelId
+
+  # ---------------------------------------------------------------- AgentCore Memory
+  # SemanticMemory: extrai fatos sobre empresas consultadas pelo usuário.
+  # SummaryMemory:  sumariza conversas para contexto em novas sessões.
+  # Ambas são particionadas por actorId = user_id do cadastro.
+  AgentMemory:
+    Type: AWS::BedrockAgentCore::Memory
+    Properties:
+      Name: !Sub "${AWS::StackName}_mem"
+      Description: >
+        Memória persistente do agente.
+        Namespace por usuário: actorId = user_id do cadastro cnpj-cadastro.
+      EventExpiryDuration: !Ref MemoryExpiryDays
+      MemoryExecutionRoleArn: !GetAtt MemoryRole.Arn
+      MemoryStrategies:
+        - SemanticMemoryStrategy:
+            Name: fatos_empresa
+            Description: Fatos relevantes sobre empresas consultadas pelo usuário.
+            NamespaceTemplates:
+              - "{actorId}"
+        - SummaryMemoryStrategy:
+            Name: resumo_conversa
+            Description: Resumo das interações recentes do usuário com o agente.
+            NamespaceTemplates:
+              - "{actorId}"
+
+  # ---------------------------------------------------------------- IAM — Runtime
+  # Role assumida pelo código que roda dentro do container do AgentCore Runtime.
+  RuntimeRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: bedrock-agentcore.amazonaws.com
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                "aws:SourceAccount": !Ref AWS::AccountId
+      Policies:
+        - PolicyName: agente-permissoes
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+
+              # Invocar o modelo LLM (Claude via Bedrock)
+              - Sid: InvocarModelo
+                Effect: Allow
+                Action:
+                  - bedrock:InvokeModel
+                  - bedrock:InvokeModelWithResponseStream
+                Resource: !Sub
+                  - "arn:${Partition}:bedrock:${Region}::foundation-model/${ModelId}"
+                  - Partition: !Ref AWS::Partition
+                    Region: !Ref AWS::Region
+                    ModelId: !Ref AgentModelId
+
+              # Retrieval na Bedrock Knowledge Base (ferramenta buscar_documentos)
+              - Sid: ConsultarKb
+                Effect: Allow
+                Action:
+                  - bedrock-agent:Retrieve
+                Resource: "*"
+
+              # Consultas Athena na Gold (ferramenta consultar_empresa)
+              - Sid: ConsultarAthena
+                Effect: Allow
+                Action:
+                  - athena:StartQueryExecution
+                  - athena:GetQueryExecution
+                  - athena:GetQueryResults
+                  - athena:GetWorkGroup
+                  - athena:StopQueryExecution
+                Resource: "*"
+
+              # Leitura do lake + escrita nos resultados do Athena
+              - Sid: LerLake
+                Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:ListBucket
+                  - s3:GetBucketLocation
+                Resource:
+                  - !Sub "arn:${AWS::Partition}:s3:::${LakeBucketName}"
+                  - !Sub "arn:${AWS::Partition}:s3:::${LakeBucketName}/*"
+              - Sid: GravarResultadosAthena
+                Effect: Allow
+                Action:
+                  - s3:PutObject
+                Resource:
+                  - !Sub "arn:${AWS::Partition}:s3:::${LakeBucketName}/athena-results/*"
+
+              # Catálogo Glue (o Athena lê metadados das tabelas Iceberg daqui)
+              - Sid: CatalogoGlue
+                Effect: Allow
+                Action:
+                  - glue:GetDatabase
+                  - glue:GetDatabases
+                  - glue:GetTable
+                  - glue:GetTables
+                  - glue:GetPartitions
+                Resource:
+                  - !Sub "arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:catalog"
+                  - !Sub "arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:database/*"
+                  - !Sub "arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:table/*/*"
+
+              # AgentCore Memory — store e retrieve de contexto por usuário
+              - Sid: AcessarMemoria
+                Effect: Allow
+                Action:
+                  - bedrock-agentcore:*
+                Resource:
+                  - !Sub "arn:${AWS::Partition}:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:memory/*"
+
+              # ECR — para o Runtime fazer pull da imagem do agente
+              - Sid: ECRAuth
+                Effect: Allow
+                Action:
+                  - ecr:GetAuthorizationToken
+                Resource: "*"
+              - Sid: ECRPullImage
+                Effect: Allow
+                Action:
+                  - ecr:BatchGetImage
+                  - ecr:GetDownloadUrlForLayer
+                  - ecr:BatchCheckLayerAvailability
+                Resource: !GetAtt AgentRepository.Arn
+
+  # ---------------------------------------------------------------- AgentCore Runtime
+  # Container Strands rodando em microVM, porta 8080.
+  # Criado apenas quando ImageTag for preenchido (após o primeiro push da imagem).
+  AgentRuntime:
+    Type: AWS::BedrockAgentCore::Runtime
+    Condition: TemImagem
+    Properties:
+      AgentRuntimeName: !Sub "${AWS::StackName}_runtime"
+      Description: Strands agent — Athena Gold + Bedrock KB + AgentCore Memory.
+      RoleArn: !GetAtt RuntimeRole.Arn
+      NetworkConfiguration:
+        NetworkMode: PUBLIC
+      AgentRuntimeArtifact:
+        ContainerConfiguration:
+          ContainerUri: !Sub
+            - "${RepoUri}:${Tag}"
+            - RepoUri: !GetAtt AgentRepository.RepositoryUri
+              Tag: !Ref ImageTag
+      EnvironmentVariables:
+        KB_ID: !Ref KbId
+        MEMORY_ID: !Ref AgentMemory
+        ATHENA_WORKGROUP: !Ref AthenaWorkgroup
+        LAKE_BUCKET: !Ref LakeBucketName
+        MODEL_ID: !Ref AgentModelId
+
+  # Endpoint padrão do Runtime (aponta para a versão ativa).
+  AgentRuntimeEndpoint:
+    Type: AWS::BedrockAgentCore::RuntimeEndpoint
+    Condition: TemImagem
+    Properties:
+      AgentRuntimeId: !GetAtt AgentRuntime.AgentRuntimeId
+      Name: !Sub "${AWS::StackName}_ep"
+      Description: Endpoint padrão do agente (versão DEFAULT).
+
+Outputs:
+
+  EcrRepositoryUri:
+    Value: !GetAtt AgentRepository.RepositoryUri
+    Description: "URI do ECR para o docker push: $(aws ... describe-stacks --output ...-EcrRepositoryUri)"
+
+  MemoryId:
+    Value: !Ref AgentMemory
+    Export:
+      Name: !Sub "${AWS::StackName}-MemoryId"
+    Description: ID da AgentCore Memory (actorId = user_id no SDK).
+
+  RuntimeArn:
+    Condition: TemImagem
+    Value: !GetAtt AgentRuntime.AgentRuntimeArn
+    Export:
+      Name: !Sub "${AWS::StackName}-RuntimeArn"
+    Description: ARN do AgentCore Runtime para InvokeAgentRuntime (api/agente-chat).
+
+  RuntimeEndpointArn:
+    Condition: TemImagem
+    Value: !Ref AgentRuntimeEndpoint
+    Description: ARN do endpoint padrão do Runtime.
