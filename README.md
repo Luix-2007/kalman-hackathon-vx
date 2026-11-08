@@ -268,6 +268,14 @@ O teste (`ia/chatbot/tests/integracao_cadastro.py`) usa suas credenciais AWS e:
 
 Se o pipeline falhar, o tópico de alerta dele recebe o aviso, como numa falha real. Observação: as views `vw_*` não estão no repositório (foram criadas direto no Glue); o agente assume que `vw_painel_empresa` e `vw_empresas_atos` têm a coluna `cnpj`, o que confere com o schema que elas têm hoje.
 
+## ia/propostas
+
+Propostas do DOU: quando o ETL do DOU termina, acha por busca semântica (Titan v2 + S3 Vectors) os
+atos que importam para cada empresa, confirma com um modelo barato, extrai as propostas com um
+modelo forte, confere em código com as regras do ETL da matriz e grava na landing da matriz. O dono
+aprova ou rejeita pela API. Usa o tipo de empresa da classificação do cadastro. Testes, simulação
+com dados reais sem deploy e a **ordem de deploy** em [ia/propostas/README.md](ia/propostas/README.md).
+
 ## front/cadastro-teste
 
 Front de **teste** do fluxo completo: login no Cognito, envio do CNPJ, espera pela consulta, formulário pré-preenchido com os dados da Receita e organização (convidar, aceitar convite, remover membros). Foi feito com Vite, React, TypeScript e Amplify, a mesma base do Lovable. O arquivo `src/api.ts` é o cliente da API que serve de referência para o front definitivo.
@@ -292,7 +300,7 @@ Os campos do perfil ficam em `src/campos.ts`, espelhando `src/perfil.py` da API:
 
 ## pipeline
 
-ETLs do lakehouse na AWS: o `cadastro/` lê a tabela do DynamoDB desta API e o `dou/` coleta os atos do Diário Oficial. Os dois rodam como jobs Glue Python Shell com DuckDB e gravam em Iceberg no Glue Data Catalog, no mesmo bucket. Detalhes em [pipeline/README.md](pipeline/README.md).
+ETLs do lakehouse na AWS: o `cadastro/` lê a tabela do DynamoDB desta API (e classifica cada empresa por tipo, com embeddings), o `dou/` coleta os atos do Diário Oficial, o `matriz/` monta a matriz de obrigações e o `kb/` gera os documentos da Knowledge Base. Os dois rodam como jobs Glue Python Shell com DuckDB e gravam em Iceberg no Glue Data Catalog, no mesmo bucket. Detalhes em [pipeline/README.md](pipeline/README.md).
 
 ```bash
 make pipeline-test     # testes dos dois ETLs, sem AWS
