@@ -23,6 +23,7 @@ import { Icone, Marca } from "./identidade/marca";
 import { MotivoAnimado } from "./MotivoAnimado";
 import { ResumoMatriz, TelaMatriz } from "./TelaMatriz";
 import { Dash } from "./dash/Dash";
+import { Legendas } from "./Legendas";
 
 /** "Concluir cadastro" fica no navegador, por CNPJ (pendência: campo na API). Com ele, /painel abre o dash. */
 const CHAVE_CONCLUIDO = "kalman:cadastro-concluido";
@@ -176,6 +177,7 @@ export default function App() {
   return (
     <>
       <RolarAoTopo />
+      {demoAtivo && <Legendas />}
       <Routes>
         <Route path="/" element={<Inicio />} />
         <Route path="/entrar" element={acesso("entrar")} />

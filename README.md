@@ -1,4 +1,138 @@
-# kalman-hackathon-vx
+<p align="center">
+  <img src="identidade-visual/marca/kalman-horizontal.svg" alt="Kalman" height="64">
+</p>
+
+<p align="center"><b>Saiba quais normas afetam a sua empresa.</b></p>
+
+<p align="center">
+O Kalman lê o Diário Oficial da União todo dia, confere cada ato com a matriz de obrigações da empresa,
+propõe o que muda e avisa quem precisa decidir.
+</p>
+
+<p align="center">
+  <a href="https://kalman-vx.lovable.app">kalman-vx.lovable.app</a> ·
+  <a href="https://kalman-vx.lovable.app/painel?demo=dash">painel de demonstração</a>
+</p>
+
+---
+
+## O que o Kalman faz
+
+| | |
+|---|---|
+| **Cadastro em minutos** | A empresa informa o CNPJ; os dados da Receita chegam sozinhos e a empresa completa o perfil regulatório (setor, UFs, órgãos, outorgas). |
+| **Matriz de obrigações** | A empresa envia a planilha que já usa. O Kalman versiona cada obrigação e gera as tarefas com prazo e área responsável. |
+| **Leitura diária do DOU** | Todo dia o DOU é baixado, separado em atos e cruzado com o perfil e a matriz de cada empresa. |
+| **Propostas para decidir** | Quando um ato muda uma obrigação (prazo, responsável, nova regra), a IA propõe a nova versão com o trecho citado. Uma pessoa aprova ou rejeita; aprovado, as tarefas são recalculadas. |
+| **IA do Kalman** | Chat sobre as normas da empresa: responde com base na matriz, nas tarefas e nos atos do DOU, e mostra as fontes. |
+| **Painel executivo** | Para decidir, em risco, prazos da semana, linha do tempo das mudanças e calendário por área. |
+
+## Arquitetura na AWS
+
+Tudo é serverless e roda em `us-east-1`. Cada parte é uma stack SAM/CloudFormation independente.
+
+```mermaid
+flowchart LR
+  subgraph Usuario["Empresa"]
+    FRONT["Front React<br/>(Lovable)"]
+  end
+
+  subgraph Acesso["Acesso"]
+    COG["Amazon Cognito<br/>login + e-mails"]
+  end
+
+  subgraph APIs["APIs (API Gateway HTTP + Lambda)"]
+    CAD["cnpj-cadastro<br/>Lambda + SQS"]
+    MAT["matriz-api<br/>Lambda"]
+    CHAT["chatbot-api<br/>Lambda"]
+  end
+
+  subgraph Dados["Lakehouse (S3 + Iceberg)"]
+    DDB[("DynamoDB<br/>organizações e conversas")]
+    S3[("S3<br/>landing → bronze → silver → gold")]
+    GLUE["Glue Data Catalog<br/>+ Athena"]
+  end
+
+  subgraph Pipelines["Pipelines (Step Functions + Glue + DuckDB)"]
+    PDOU["lakehouse-dou<br/>DOU todo dia 05:00"]
+    PCAD["lakehouse-pipeline<br/>cadastro todo dia 02:00"]
+    PMAT["lakehouse-matriz<br/>matriz e tarefas"]
+    PKB["kb<br/>embeddings"]
+  end
+
+  subgraph IA["IA (Amazon Bedrock)"]
+    PROP["propostas<br/>Step Functions + Lambdas<br/>classifica atos e propõe versões"]
+    AGC["AgentCore Runtime<br/>IA do Kalman + Guardrail"]
+    AGCAD["AgentCore Runtime + Memory<br/>agente do cadastro (em preparação)"]
+    KB["Knowledge Base<br/>S3 Vectors"]
+  end
+
+  INPE["Imprensa Nacional<br/>(DOU)"] --> PDOU
+  RFB["OpenCNPJ<br/>(Receita)"] --> CAD
+
+  FRONT -- login --> COG
+  FRONT -- token --> CAD & MAT & CHAT
+  CAD --> DDB
+  DDB -- export --> PCAD
+  PCAD & PDOU & PMAT --> S3
+  S3 --- GLUE
+  PKB --> KB
+  PDOU --> PROP
+  PROP --> GLUE
+  MAT -- Athena --> GLUE
+  CHAT --> AGC
+  AGC --> GLUE & KB
+  CHAT --> DDB
+```
+
+| Stack | Pasta | Serviços | Papel |
+|---|---|---|---|
+| `cnpj-cadastro` | [`api/cnpj-cadastro`](api/cnpj-cadastro) | Cognito, API Gateway HTTP, 5 Lambdas, SQS, DynamoDB | Login, cadastro pelo CNPJ (OpenCNPJ), perfil regulatório, equipe e convites, e-mails do Cognito com a marca |
+| `matriz-api` | [`api/matriz`](api/matriz) | API Gateway HTTP, Lambda, DynamoDB, Athena | Matriz de obrigações, tarefas, linha do tempo, importação da planilha e decisões sobre as propostas |
+| `chatbot-api` | [`api/chatbot`](api/chatbot) | API Gateway HTTP, Lambda, DynamoDB, CloudWatch Logs | Porta de entrada do chat: sessão, histórico e chamada ao agente |
+| IA do Kalman | [`ia/chatbot`](ia/chatbot) | Bedrock AgentCore Runtime, Bedrock Guardrail | Agente com ferramentas sobre a matriz, as tarefas e os atos do DOU; respostas em blocos com fonte |
+| Agente do cadastro | [`ia/agente-cadastro`](ia/agente-cadastro) | AgentCore Runtime + Memory, ECR | Ajuda a preencher o perfil regulatório (stack pronta, ainda não ligada ao front) |
+| Propostas | [`ia/propostas`](ia/propostas) | Step Functions, 4 Lambdas, S3 Vectors, Glue | Classifica os atos do dia e propõe novas versões de obrigações |
+| `lakehouse-pipeline` | [`pipeline/cadastro`](pipeline/cadastro) | S3, Glue Job (DuckDB + PyIceberg), Athena, Step Functions, SNS | Dono do bucket e dos databases `landing/bronze/silver/gold`; perfis das empresas |
+| `lakehouse-dou` | [`pipeline/dou`](pipeline/dou) | Glue Job, Step Functions (EventBridge Scheduler), SNS | Baixa e estrutura o DOU todo dia |
+| `lakehouse-matriz` | [`pipeline/matriz`](pipeline/matriz) | Glue Job, Step Functions, SNS | Matriz e tarefas em Iceberg (`gold_db.matriz_*`) |
+| `kb` | [`pipeline/kb`](pipeline/kb) | Bedrock Knowledge Base, S3 Vectors, Glue Job | Base de conhecimento das normas (Titan Embeddings v2) |
+
+**Princípios**
+
+- **Uma pessoa decide.** A IA propõe; nenhuma obrigação muda sem aprovação, e cada versão guarda o ato, o dispositivo e o trecho citado.
+- **Isolamento por empresa.** O `user_id` vem sempre do token do Cognito; a API ignora qualquer identificador enviado pelo front.
+- **Custo baixo e sem servidor ligado.** Lambda, Step Functions, Glue Python Shell (1 DPU) e Athena: paga-se só o que roda.
+
+## Estrutura do repositório
+
+```
+api/                 APIs serverless (cnpj-cadastro, matriz, chatbot) e o template do e-mail de alertas
+ia/                  agentes no Bedrock AgentCore (chatbot, cadastro) e o pipeline de propostas
+pipeline/            ETLs do lakehouse (cadastro, dou, matriz, kb) com DuckDB + Iceberg
+front/cadastro-teste landing, cadastro, matriz e painel executivo (React 19 + Vite)
+identidade-visual/   marca, tokens e componentes (versão "Laudo")
+analises/            estudos e benchmarks
+```
+
+## Como rodar
+
+```bash
+make help                     # alvos de todas as partes
+make test                     # testes (sem AWS)
+
+cd front/cadastro-teste
+npm install && npm run dev    # http://localhost:5173
+# painel com dados de exemplo, sem login: http://localhost:5173/painel?demo=dash
+```
+
+Deploy de cada stack: `make api-deploy` (cadastro) ou `sam build && sam deploy` na pasta da stack. O passo a passo
+para liberar o front publicado (CORS) está em [`front/cadastro-teste/AWS-LOVABLE.md`](front/cadastro-teste/AWS-LOVABLE.md).
+
+---
+
+# Referência técnica
+
 
 ## ⚠️ Publicação na AWS: uma branch por vez
 
