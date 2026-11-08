@@ -2,7 +2,9 @@
 API do chatbot: a única porta de entrada para o agente (agent.py, no AgentCore).
 
     POST /chatbot/mensagens    {"prompt": "texto", "session_id": "opcional"}
-    200  {"resposta": "texto"}
+    200  {"resposta": "resumo curto (texto puro)", "blocos": [...]}
+         blocos = os dados que a tela desenha (tarefas, linha do tempo...), montados em código
+         a partir das consultas do agente; formato em ia/chatbot/contrato/schema.json
     400  corpo inválido     401 sem token     404 usuário sem organização
     429  limite de mensagens (header Retry-After)
     502  o agente falhou (mensagem genérica; o motivo fica só no log)
@@ -34,6 +36,8 @@ from datetime import datetime, timezone
 import boto3
 from botocore.config import Config
 from botocore.exceptions import BotoCoreError, ClientError, ReadTimeoutError
+
+import blocos as modelo_de_blocos  # cópia de ia/chatbot/blocos.py (make ia-chatbot-sync-blocos); um teste confere
 
 log = logging.getLogger()
 log.setLevel(os.environ.get("LOG_LEVEL", "INFO"))
@@ -196,8 +200,12 @@ def handler(event, context=None):
         prompt, session_id = _corpo(event)
         contar_mensagem(user_id)
         saida = perguntar(cnpj, user_id, prompt, sessao(user_id, session_id))
-        registro.update(resultado="ok", consultas=saida.get("consultas"))
-        return resp(200, {"resposta": saida["resposta"]})
+        bruto = saida.get("blocos")
+        dados = modelo_de_blocos.validos(bruto)   # o front só recebe blocos com a forma do contrato
+        if bruto is not None and (not isinstance(bruto, list) or len(dados) != len(bruto)):
+            log.warning("blocos do agente descartados por forma inválida")
+        registro.update(resultado="ok", consultas=saida.get("consultas"), blocos=[b["tipo"] for b in dados])
+        return resp(200, {"resposta": saida["resposta"], "blocos": dados})
     except ErroApi as exc:
         registro["resultado"] = exc.status
         return resp(exc.status, {"erro": exc.erro}, exc.headers)

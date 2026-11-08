@@ -106,7 +106,7 @@ def test_usuario_sem_organizacao_404_sem_chamar_nem_contar(api, sub):
 
 def test_cnpj_e_usuario_vem_do_token_e_da_tabela_nunca_do_corpo(api):
     code, body, _ = enviar(api, "dono", {"prompt": "oi", "cnpj": OUTRO, "user_id": "outro-dono", "papel": "dono"})
-    assert code == 200 and body == {"resposta": "A renovação da LO vence em 10/11/2026."}
+    assert code == 200 and body == {"resposta": "A renovação da LO vence em 10/11/2026.", "blocos": []}
     p = api.fake.payload()
     assert p["cnpj"] == CNPJ and p["user_id"] == "dono" and p["prompt"] == "oi"
     assert set(p) == {"cnpj", "user_id", "prompt", "session_id"}
@@ -254,3 +254,52 @@ def test_log_estruturado_sem_pergunta_nem_resposta_nem_sub(api, caplog):
     assert reg["usuario"] == api.anonimo(sub) and len(reg["usuario"]) == 8
     for proibido in (sub, "segredo-da-pergunta-123", "renovação da LO"):
         assert proibido not in caplog.text, proibido
+
+
+# ---------------------------------------------------------------- blocos de dados
+
+BLOCO = {"tipo": "tarefas", "parametros": {"em_risco": True},
+         "itens": [{"descricao": "Renovar a LO", "vencimento": "2026-11-10", "em_risco": True, "obrigacao_versao": 1}]}
+
+
+def test_blocos_do_agente_chegam_ao_front_sem_o_resto(api):
+    api.fake.saida = {"resposta": "Uma tarefa em risco.", "blocos": [BLOCO], "consultas": 1}
+    code, body, _ = enviar(api, "dono")
+    assert code == 200 and body == {"resposta": "Uma tarefa em risco.", "blocos": [BLOCO]}    # sem "consultas"
+
+
+def test_blocos_com_forma_invalida_sao_descartados(api, caplog):
+    ruim = {"tipo": "inventado", "itens": [{"a": 1}]}
+    aninhado = {"tipo": "tarefas", "itens": [{"descricao": {"objeto": "aninhado"}}]}
+    api.fake.saida = {"resposta": "ok", "blocos": [BLOCO, ruim, aninhado, "texto"], "consultas": 1}
+    code, body, _ = enviar(api, "dono")
+    assert code == 200 and body["blocos"] == [BLOCO]
+    assert "descartados" in caplog.text
+
+
+@pytest.mark.parametrize("blocos", [None, "x", {"tipo": "tarefas"}, 5])
+def test_blocos_ausentes_ou_de_tipo_errado_viram_lista_vazia(api, blocos):
+    api.fake.saida = {"resposta": "ok", "blocos": blocos}
+    code, body, _ = enviar(api, "dono")
+    assert code == 200 and body == {"resposta": "ok", "blocos": []}
+
+
+def test_agente_antigo_sem_blocos_continua_funcionando(api):
+    api.fake.saida = {"resposta": "ok", "consultas": 0}
+    assert enviar(api, "dono")[1] == {"resposta": "ok", "blocos": []}
+
+
+def test_log_registra_os_tipos_de_bloco_nao_o_conteudo(api, caplog):
+    import logging
+    caplog.set_level(logging.INFO)
+    api.fake.saida = {"resposta": "ok", "blocos": [BLOCO], "consultas": 1}
+    enviar(api, "dono")
+    reg = next(json.loads(r.message) for r in caplog.records if r.message.startswith("{"))
+    assert reg["blocos"] == ["tarefas"] and "Renovar a LO" not in caplog.text
+
+
+def test_copia_dos_blocos_e_igual_a_do_agente():
+    import filecmp
+    agente = Path(__file__).parents[3] / "ia" / "chatbot" / "blocos.py"
+    assert filecmp.cmp(Path(__file__).parents[1] / "src" / "blocos.py", agente, shallow=False), \
+        "rode make ia-chatbot-sync-blocos"
