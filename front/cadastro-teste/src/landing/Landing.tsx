@@ -2,9 +2,11 @@
  * Landing do Kalman (rota /). Marcação e estilo vêm da versão aprovada em HTML
  * (torre-regulatoria/mockups/landing-final/index.html); o comportamento está em ./iniciar.ts.
  * Os "Começar" e os campos de CNPJ levam a /criar-conta (com ?cnpj= quando preenchido).
+ * A seção 04 (IA do Kalman) foi acrescentada depois, só no React: ver SecaoIa no fim do arquivo.
  */
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { NOME_IA, Robo, type EstadoRobo } from "../dash/Robo";
 import { iniciarLanding } from "./iniciar";
 import "./landing.css";
 
@@ -59,6 +61,7 @@ export default function Landing() {
           <nav aria-label="Seções">
             <a href="#problema">Normas</a>
             <a href="#prova">Comparativo</a>
+            <a href="#ia">{NOME_IA}</a>
             <a href="#como-funciona">Como funciona</a>
             <Link className="btn btn--sm" to="/criar-conta">Começar</Link>
           </nav>
@@ -193,11 +196,14 @@ export default function Landing() {
           </div>
         </section>
 
-        {/* 4 · COMO FUNCIONA */}
+        {/* 4 · A IA */}
+        <SecaoIa />
+
+        {/* 5 · COMO FUNCIONA */}
         <section className="secao" id="como-funciona" aria-labelledby="t-passos">
           <div className="moldura">
             <div className="cabeca">
-              <p className="rotulo">04 · Do CNPJ ao alerta</p>
+              <p className="rotulo">05 · Do CNPJ ao alerta</p>
               <h2 id="t-passos">Como funciona</h2>
             </div>
             <ol className="fluxo">
@@ -298,6 +304,7 @@ export default function Landing() {
             <a href="#problema">Normas</a>
             <a href="#prova">Clipping × Kalman</a>
             <a href="#produto">Da norma à tarefa</a>
+            <a href="#ia">{NOME_IA}</a>
             <a href="#como-funciona">Como funciona</a>
           </nav>
           <nav className="rodape-col" aria-label="Conta">
@@ -317,5 +324,80 @@ export default function Landing() {
         </div>
       </footer>
     </div>
+  );
+}
+
+/* ─────────────────────────── 04 · IA do Kalman ───────────────────────────
+ * Conversa encenada (não chama a API): quando a seção aparece, a pergunta entra, o robô pensa e a resposta
+ * chega com o cartão e a fonte. O texto todo está no DOM desde o início (o leitor de tela lê a conversa
+ * inteira); só a encenação muda a opacidade. Com movimento reduzido, começa e fica na fase final.
+ * Sem data-fase (ou na fase "parado") tudo fica visível. */
+type FaseIa = "espera" | "pergunta" | "pensando" | "resposta" | "fim" | "parado";
+const ROTEIRO_IA: [FaseIa, number][] = [["pergunta", 0], ["pensando", 900], ["resposta", 2500], ["fim", 4100], ["parado", 5600]];
+const ROBO_NA_FASE: Record<FaseIa, EstadoRobo> = {
+  espera: "repouso", pergunta: "ouvindo", pensando: "pensando", resposta: "respondendo", fim: "concluido", parado: "repouso",
+};
+const PERGUNTA_IA = "O que mudou no prazo de migração?";
+
+function SecaoIa() {
+  const palco = useRef<HTMLDivElement>(null);
+  const [fase, setFase] = useState<FaseIa>(() =>
+    matchMedia("(prefers-reduced-motion: reduce)").matches ? "parado" : "espera");
+
+  useEffect(() => {
+    if (fase !== "espera" || !palco.current) return;
+    const timers: number[] = [];
+    const io = new IntersectionObserver(([e]) => {
+      if (!e.isIntersecting) return;
+      io.disconnect();
+      for (const [f, t] of ROTEIRO_IA) timers.push(window.setTimeout(() => setFase(f), t));
+    }, { threshold: 0.45 });
+    io.observe(palco.current);
+    return () => { io.disconnect(); timers.forEach(clearTimeout); };
+  }, []); // só arma na montagem; as trocas de fase vêm dos timers
+
+  const robo = ROBO_NA_FASE[fase];
+  return (
+    <section className="secao secao-ia" id="ia" aria-labelledby="t-ia">
+      <div className="moldura">
+        <div className="cabeca">
+          <p className="rotulo">04 · {NOME_IA}</p>
+          <h2 id="t-ia">Tire dúvidas sobre as suas normas</h2>
+          <p className="apoio-secao">Prazos, obrigações e atos do DOU da sua empresa, com o trecho da norma em cada resposta.</p>
+        </div>
+
+        <div className="ia-palco" ref={palco} data-fase={fase}>
+          <Robo estado={robo} tamanho={76} escuro className="ia-robo" />
+          <figure className="ia-chat">
+            <figcaption className="sr-only">Exemplo de conversa com a {NOME_IA}</figcaption>
+            <ol className="ia-mensagens">
+              <li className="ia-msg ia-msg--pessoa"><span className="sr-only">Pergunta: </span>{PERGUNTA_IA}</li>
+              <li className="ia-msg ia-msg--ia">
+                <Robo estado={fase === "pensando" ? "pensando" : "repouso"} tamanho={28} className="ia-avatar" />
+                <div className="ia-msg-corpo">
+                  <p className="ia-pensando" aria-hidden="true">Lendo os atos e a matriz<i>.</i><i>.</i><i>.</i></p>
+                  <div className="ia-resposta">
+                    <p className="ia-texto"><span className="sr-only">Resposta da {NOME_IA}: </span>A REN ANEEL nº 1.174/2026, publicada em <span className="mono">04/11/2026</span>, reduziu o prazo de <span className="mono">10</span> para <span className="mono">5</span> dias úteis (<span className="mono">art.&nbsp;166-A</span>).</p>
+                    <div className="ia-dado">
+                      <span className="ia-dado-rotulo">Prazo para responder a migração</span>
+                      <p className="ia-troca">
+                        <span className="ia-antes"><small>antes</small><s>10 dias úteis</s></span>
+                        <svg className="ia-seta" viewBox="0 0 24 12" fill="none" aria-hidden="true"><path d="M1 6h20M16 1.5 21 6l-5 4.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                        <span className="ia-depois"><small>agora</small><b>5 dias úteis</b></span>
+                      </p>
+                      <p className="ia-fonte"><span>Fonte</span>REN&nbsp;1.174/2026 · art.&nbsp;166-A · DOU&nbsp;04/11/2026 · p.&nbsp;68</p>
+                    </div>
+                  </div>
+                </div>
+              </li>
+            </ol>
+            <div className="ia-campo" aria-hidden="true">
+              <span>Pergunte sobre prazos, obrigações ou um ato do DOU…</span>
+              <i><svg viewBox="0 0 16 16" fill="none"><path d="M3 8h9M8.5 4.5 12 8l-3.5 3.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg></i>
+            </div>
+          </figure>
+        </div>
+      </div>
+    </section>
   );
 }
