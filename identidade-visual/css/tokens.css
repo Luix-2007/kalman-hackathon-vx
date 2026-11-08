@@ -1,0 +1,89 @@
+/* ═══════════════════════════════════════════════════════════════════════
+ * Kalman · identidade "Laudo" · tokens
+ *
+ * Só variáveis: não estiliza nada sozinho. Importe primeiro.
+ * Grafite, laranja e branco. O laranja é o sinal: aparece pouco e sempre com sentido.
+ * Contrastes (WCAG) calculados e anotados ao lado de cada cor de texto.
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+:root {
+  /* ── cor · base ─────────────────────────────────────────────────────── */
+  --k-grafite: #0e1a24;     /* principal: texto, blocos escuros, marca */
+  --k-grafite-2: #172633;   /* superfície sobre grafite (cartão, celular) */
+  --k-grafite-3: #24384a;   /* hover de botão grafite, bordas sobre grafite */
+  --k-laranja: #ff5a1f;     /* o sinal: ação principal, grifo, ponto, prazo */
+  --k-laranja-2: #ff7a45;   /* hover do laranja */
+  --k-ceu: #bfd9ea;         /* apoio: traços, gráficos, selos */
+  --k-ceu-claro: #eaf2f7;   /* fundo de seção, citação, chip */
+  --k-branco: #ffffff;      /* fundo da página */
+
+  /* ── cor · texto ────────────────────────────────────────────────────── */
+  --k-tinta: var(--k-grafite);  /* 17.6:1 sobre branco */
+  --k-tinta-2: #45525e;         /* apoio · 8.0:1 sobre branco */
+  --k-tinta-3: #66727d;         /* legenda, fonte · 4.9:1 sobre branco (4.3:1 sobre céu claro: lá use tinta-2) */
+  --k-erro: #b8321a;            /* mensagem de erro · 6.0:1 sobre branco */
+  --k-sobre-grafite: #ffffff;               /* 17.6:1 */
+  --k-sobre-grafite-2: rgb(255 255 255 / 0.7); /* apoio sobre grafite */
+
+  /* ── cor · linhas ───────────────────────────────────────────────────── */
+  --k-linha: rgb(14 26 36 / 0.12);          /* divisória, borda de card */
+  --k-linha-forte: rgb(14 26 36 / 0.32);    /* borda de campo (contraste 3:1 de controle) */
+  --k-linha-escura: rgb(191 217 234 / 0.25); /* divisória sobre grafite */
+
+  /* ── tipografia ─────────────────────────────────────────────────────── */
+  --k-fonte: "Instrument Sans", ui-sans-serif, system-ui, sans-serif;
+  --k-fonte-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", monospace;
+
+  --k-t-display: clamp(2.75rem, 5.4vw, 5rem);   /* título do hero */
+  --k-t-h2: clamp(2rem, 3.8vw, 3.5rem);         /* título de seção */
+  --k-t-h3: clamp(1.6rem, 2.6vw, 2.25rem);      /* subtítulo */
+  --k-t-numero: clamp(2.25rem, 4vw, 3.5rem);    /* KPI, em mono */
+  --k-t-apoio: 1.05rem;                          /* a frase de apoio da seção */
+  --k-t-corpo: 1rem;
+  --k-t-pequeno: 0.875rem;
+  --k-t-legenda: 0.78rem;                        /* fonte, nota */
+  --k-t-rotulo: 0.75rem;                         /* rótulo mono em caixa alta */
+
+  --k-peso-titulo: 600;
+  --k-peso-corpo: 400;
+  --k-tracking-display: -0.035em;
+  --k-tracking-titulo: -0.03em;
+  --k-tracking-rotulo: 0.08em;
+  --k-entrelinha-titulo: 1.02;
+
+  /* ── raio (concêntrico: externo = interno + espaçamento) ───────────── */
+  --k-raio-chip: 6px;      /* selo, chip */
+  --k-raio-controle: 8px;  /* botão, campo */
+  --k-raio-card: 12px;     /* card da tarefa, card de multa */
+  --k-raio-painel: 14px;   /* painel grafite do hero */
+  --k-raio-bloco: 16px;    /* bloco laranja do CTA */
+  --k-raio-celular: 30px;
+
+  /* ── sombra (elevação; bordas ficam para estrutura) ────────────────── */
+  --k-sombra-borda:
+    0 0 0 1px rgb(0 0 0 / 0.06),
+    0 1px 2px -1px rgb(0 0 0 / 0.06),
+    0 2px 4px 0 rgb(0 0 0 / 0.04);
+  --k-sombra-elevada:
+    0 0 0 1px rgb(14 26 36 / 0.06),
+    0 10px 30px -8px rgb(0 0 0 / 0.45); /* card sobre o painel grafite */
+  --k-sombra-celular: 0 24px 48px -12px rgb(0 0 0 / 0.6);
+
+  /* ── movimento ──────────────────────────────────────────────────────── */
+  --k-ease-out: cubic-bezier(0.23, 1, 0.32, 1);       /* entrar, sair, padrão */
+  --k-ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);   /* mover na tela */
+  --k-ease-icone: cubic-bezier(0.2, 0, 0, 1);         /* troca de ícone/rótulo */
+  --k-dur-press: 150ms;      /* botão pressionado (escala 0.96) */
+  --k-dur-ui: 200ms;         /* hover, cor, popover */
+  --k-dur-entrada: 300ms;    /* entrada de bloco (opacidade + 12px + blur 4px) */
+  --k-dur-saida: 150ms;      /* saída é sempre menor que a entrada */
+  --k-dur-explicacao: 400ms; /* demonstração de marketing (hero) */
+  --k-escalonar: 100ms;      /* intervalo entre itens de uma entrada */
+  --k-escala-press: 0.96;
+
+  /* ── layout ─────────────────────────────────────────────────────────── */
+  --k-largura: 88rem;
+  --k-margem: clamp(1rem, 3vw, 2.5rem);
+  --k-secao: clamp(5rem, 8vw, 7rem);
+  --k-grade-pontos: 16px;
+}

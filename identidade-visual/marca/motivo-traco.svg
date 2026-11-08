@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 300" width="600" height="300">
+  <!-- Kalman · motivo em traço único, sem fundo. Use em grafite com opacidade baixa (13 a 16%)
+       sobre o bloco laranja, ou em céu sobre o grafite. Troque a cor em stroke/fill. -->
+  <g fill="none" stroke="#0E1A24" stroke-linecap="round">
+    <path d="M0 40 C 160 40, 220 150, 380 150" stroke-width="10"/>
+    <path d="M0 260 C 160 260, 220 150, 380 150" stroke-width="10"/>
+    <path d="M0 120 C 90 120, 130 190, 240 150 L 520 150" stroke-width="16"/>
+  </g>
+  <circle cx="540" cy="150" r="26" fill="#0E1A24"/>
+</svg>

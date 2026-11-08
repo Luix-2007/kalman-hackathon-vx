@@ -1,0 +1,202 @@
+/* ═══════════════════════════════════════════════════════════════════════
+ * Kalman · componentes
+ * CSS puro, prefixo k-. Funciona em HTML solto, React, Vue, e-mail (com ressalvas).
+ * Marcação de cada um em especime.html.
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+/* ── botão ───────────────────────────────────────────────────────────────
+ * Laranja = ação principal (uma por tela). Texto GRAFITE sobre laranja (5.6:1);
+ * branco sobre laranja dá 3.1:1 e não passa em texto deste tamanho.
+ * Grafite = ação secundária forte. Claro = ação terciária. Contorno = neutra.
+ * Ícone à direita com 2px a menos de respiro (alinhamento óptico). */
+.k-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  height: 3rem;
+  padding-inline: 1.25rem 1.125rem;
+  border: 1px solid transparent;
+  border-radius: var(--k-raio-controle);
+  font: 600 0.98rem/1 var(--k-fonte);
+  white-space: nowrap;
+  text-decoration: none;
+  cursor: pointer;
+  background: var(--k-laranja);
+  color: var(--k-grafite);
+  transition-property: transform, background-color, color, border-color;
+  transition-duration: var(--k-dur-press);
+  transition-timing-function: var(--k-ease-out);
+  -webkit-tap-highlight-color: transparent;
+}
+.k-btn:not(:disabled):active { transform: scale(var(--k-escala-press)); }
+.k-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.k-btn svg { width: 1rem; height: 1rem; flex: none; }
+@media (hover: hover) { .k-btn:hover { background: var(--k-laranja-2); } }
+
+.k-btn--grafite { background: var(--k-grafite); color: var(--k-branco); }
+@media (hover: hover) { .k-btn--grafite:hover { background: var(--k-grafite-3); } }
+
+.k-btn--claro { background: var(--k-ceu-claro); color: var(--k-grafite); }
+@media (hover: hover) { .k-btn--claro:hover { background: var(--k-ceu); } }
+
+.k-btn--contorno { background: transparent; color: var(--k-grafite); border-color: var(--k-linha-forte); }
+@media (hover: hover) { .k-btn--contorno:hover { background: var(--k-ceu-claro); } }
+
+.k-btn--sm { height: 2.5rem; padding-inline: 1rem 0.875rem; font-size: 0.9rem; }
+
+/* ── campo ───────────────────────────────────────────────────────────────
+ * Rótulo sempre visível acima. Dados (CNPJ, datas) em mono.
+ * Mensagem embaixo com aria-live; erro com aria-invalid="true". */
+.k-campo { display: grid; gap: 0.5rem; }
+.k-campo label { font-size: var(--k-t-pequeno); font-weight: 600; }
+.k-campo input,
+.k-campo select,
+.k-campo textarea {
+  height: 3.25rem;
+  width: 100%;
+  min-width: 0;
+  padding-inline: 1rem;
+  border: 1px solid var(--k-linha-forte);
+  border-radius: var(--k-raio-controle);
+  background: var(--k-branco);
+  color: var(--k-grafite);
+  font: 400 1.05rem var(--k-fonte);
+  outline: none;
+  transition: border-color var(--k-dur-press) ease, box-shadow var(--k-dur-press) ease;
+}
+.k-campo textarea { height: auto; min-height: 6rem; padding-block: 0.75rem; }
+.k-campo input::placeholder { color: rgb(102 114 125 / 0.7); }
+.k-campo input:focus-visible,
+.k-campo textarea:focus-visible { border-color: var(--k-grafite); box-shadow: 0 0 0 3px rgb(255 90 31 / 0.45); }
+.k-campo [aria-invalid="true"] { border-color: var(--k-erro); box-shadow: 0 0 0 3px rgb(184 50 26 / 0.2); }
+.k-campo .k-campo-msg { min-height: 1.25rem; font-size: var(--k-t-pequeno); color: var(--k-tinta-3); }
+.k-campo .k-campo-msg[data-erro] { color: var(--k-erro); }
+.k-campo--mono input { font-family: var(--k-fonte-mono); font-variant-numeric: tabular-nums; letter-spacing: 0.02em; }
+
+/* campo + botão na mesma linha (CNPJ); empilha no celular */
+.k-linha-acao { display: flex; flex-direction: column; gap: 0.5rem; }
+@media (min-width: 640px) {
+  .k-linha-acao { flex-direction: row; }
+  .k-linha-acao > input { flex: 1; }
+  .k-linha-acao > .k-btn { height: 3.25rem; }
+}
+
+/* ── selo (decisão sobre um ato) ─────────────────────────────────────── */
+.k-selo {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  height: 1.625rem;
+  padding-inline: 0.5rem;
+  border-radius: var(--k-raio-chip);
+  font: 600 0.78rem/1 var(--k-fonte);
+  background: var(--k-ceu-claro);
+  color: var(--k-grafite);
+}
+.k-selo::before { content: ""; width: 0.45rem; height: 0.45rem; border-radius: 50%; background: currentColor; }
+.k-selo--aplicavel { background: var(--k-laranja); color: var(--k-grafite); }
+.k-selo--aplicavel::before { background: var(--k-grafite); }
+.k-selo--incerto { background: transparent; box-shadow: inset 0 0 0 1px var(--k-linha-forte); }
+.k-selo--descartado { color: var(--k-tinta-2); }
+
+/* chip neutro (unidade, CNAE, UF) */
+.k-chip {
+  display: inline-flex;
+  align-items: center;
+  height: 1.5rem;
+  padding-inline: 0.5rem;
+  border-radius: var(--k-raio-chip);
+  background: var(--k-ceu-claro);
+  font-size: 0.75rem;
+}
+
+/* ── card ────────────────────────────────────────────────────────────── */
+.k-card {
+  border: 1px solid var(--k-linha);
+  border-radius: var(--k-raio-card);
+  background: var(--k-branco);
+  padding: 1rem 1.1rem;
+}
+.k-card--elevado { border-color: transparent; box-shadow: var(--k-sombra-elevada); }
+
+/* card da tarefa: a peça central do produto */
+.k-tarefa { display: grid; gap: 0.6rem; }
+.k-tarefa-ato { font: 500 0.7rem/1.3 var(--k-fonte-mono); letter-spacing: 0.04em; text-transform: uppercase; color: var(--k-tinta-3); }
+.k-tarefa-titulo { font-size: 1.05rem; font-weight: 600; line-height: 1.3; }
+.k-tarefa-dados { display: grid; grid-template-columns: auto 1fr; gap: 0.3rem 1rem; margin: 0; font-size: 0.86rem; }
+.k-tarefa-dados dt { color: var(--k-tinta-3); }
+.k-tarefa-dados dd { margin: 0; font-weight: 500; }
+.k-prazo { font-family: var(--k-fonte-mono); font-variant-numeric: tabular-nums; }
+.k-prazo::before { content: "● "; color: var(--k-laranja); }
+
+/* ── citação de norma, com grifo ─────────────────────────────────────── */
+.k-citacao {
+  margin: 0;
+  padding-left: 0.75rem;
+  border-left: 2px solid var(--k-ceu);
+  font: 400 0.84rem/1.6 var(--k-fonte-mono);
+  color: var(--k-tinta-2);
+}
+.k-citacao cite { display: block; margin-top: 0.35rem; font-style: normal; font-size: 0.68rem; color: var(--k-tinta-3); }
+/* o grifo: o trecho que sustenta a obrigação */
+.k-grifo {
+  background: transparent;
+  color: var(--k-grafite);
+  font-weight: 500;
+  text-decoration: underline 2px var(--k-laranja);
+  text-underline-offset: 3px;
+}
+
+/* folha do DOU: o ato como foi publicado */
+.k-folha { background: rgb(234 242 247 / 0.6); border: 1px solid var(--k-linha); padding: 1.5rem; color: var(--k-grafite); }
+
+/* ── número (KPI) ────────────────────────────────────────────────────── */
+.k-numero { display: grid; gap: 0.35rem; }
+.k-numero-valor {
+  font: 500 var(--k-t-numero)/1 var(--k-fonte-mono);
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+}
+.k-numero-rotulo { font-weight: 600; }
+.k-numero-fonte { font-size: var(--k-t-legenda); color: var(--k-tinta-3); }
+
+/* ── cabeçalho de seção: rótulo numerado + título até 8 palavras + 1 frase ── */
+.k-cabecalho { display: grid; gap: 1rem; }
+.k-cabecalho .k-rotulo b { color: var(--k-grafite); font-weight: 500; }
+.k-cabecalho p { max-width: 44ch; font-size: var(--k-t-apoio); color: var(--k-tinta-2); }
+@media (min-width: 1024px) {
+  .k-cabecalho { grid-template-columns: 7fr 1fr 4fr; align-items: end; }
+  .k-cabecalho .k-rotulo { grid-column: 1 / -1; }
+  .k-cabecalho p { grid-column: 3; }
+}
+
+/* ── painel e bloco ──────────────────────────────────────────────────── */
+/* painel grafite com grade de pontos (demonstração, números) */
+.k-painel {
+  border-radius: var(--k-raio-painel);
+  background-color: var(--k-grafite);
+  background-image: radial-gradient(rgb(191 217 234 / 0.16) 1px, transparent 1px);
+  background-size: var(--k-grade-pontos) var(--k-grade-pontos);
+  color: var(--k-sobre-grafite);
+  padding: clamp(1.25rem, 3vw, 2.5rem);
+}
+.k-painel .k-rotulo { color: var(--k-ceu); }
+
+/* bloco laranja de chamada (CTA): texto grafite, botão grafite */
+.k-bloco-sinal {
+  border-radius: var(--k-raio-bloco);
+  background: var(--k-laranja);
+  color: var(--k-grafite);
+  padding: clamp(2rem, 5vw, 5rem) clamp(1.5rem, 4vw, 4rem);
+}
+
+/* seção com fundo céu claro */
+.k-secao-ceu { background: var(--k-ceu-claro); }
+.k-secao-ceu p { color: var(--k-tinta-2); } /* tinta-3 não passa aqui */
+
+/* tabela de dados */
+.k-tabela { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+.k-tabela th { text-align: left; font: 500 var(--k-t-rotulo) var(--k-fonte-mono); letter-spacing: var(--k-tracking-rotulo); text-transform: uppercase; color: var(--k-tinta-3); padding: 0.6rem 0.75rem; border-bottom: 1px solid var(--k-linha-forte); }
+.k-tabela td { padding: 0.75rem; border-bottom: 1px solid var(--k-linha); }
+.k-tabela td.k-mono { white-space: nowrap; }
