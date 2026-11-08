@@ -27,3 +27,6 @@ dist/
 
 # Claude Code (contexto e configurações locais)
 .claude/
+
+# Pacote do agente do chatbot (zip gerado pelo make)
+api/chatbot/runtime/build/

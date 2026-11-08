@@ -1,0 +1,193 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Agente da Kalman: runtime do Bedrock AgentCore (agent.py em zip no S3), a role dele e o
+  Guardrail. O runtime fica com autenticação IAM (sem authorizer): só a role da Lambda do
+  stack chatbot-api tem permissão de invocá-lo.
+
+Parameters:
+  AgentRuntimeName:
+    Type: String
+    Default: kalman_chatbot
+    AllowedPattern: "[a-zA-Z][a-zA-Z0-9_]{0,47}"
+    Description: Nome do runtime (letras, números e _; sem hífen)
+  CodeBucket:
+    Type: String
+    Description: Bucket do zip do agente (o Makefile usa o bucket do SAM)
+  CodeKey:
+    Type: String
+    Description: Chave do zip no bucket. Muda a cada pacote (tem o hash), o que faz o CloudFormation atualizar o runtime
+  ModelId:
+    Type: String
+    Description: Modelo ou perfil de inferência do Bedrock que o agente usa (MODEL_ID)
+  AcessoLeituraGoldPolicyArn:
+    Type: String
+    Description: >
+      Output AcessoLeituraGoldPolicyArn do stack lakehouse-pipeline: leitura de silver e gold pelo
+      Athena e escrita só nos resultados. As views vw_* leem tabelas da silver e da gold, então o
+      agente precisa desse alcance; o isolamento por empresa é feito no código (CNPJ fixado).
+  AthenaWorkGroup:
+    Type: String
+    Default: lakehouse-pipeline-lakehouse
+    Description: Output AthenaWorkGroupName do stack lakehouse-pipeline
+  MemoryId:
+    Type: String
+    Default: ""
+    Description: Memória do AgentCore (MEMORY_ID). Vazio = sem memória entre mensagens
+  GuardrailRevisao:
+    Type: String
+    Default: "1"
+    Description: >
+      Mude (2, 3...) quando alterar o Guardrail: o CloudFormation só publica uma nova versão
+      numerada dele quando este valor muda. O agente usa a versão publicada, não o rascunho.
+
+Conditions:
+  TemMemoria: !Not [!Equals [!Ref MemoryId, ""]]
+
+Resources:
+  # ---------------------------------------------------------------- Guardrail
+  # Filtra a entrada e a saída do modelo. Nomes de pessoas não são filtrados de propósito: o
+  # agente fala de razão social e de responsáveis, e o filtro de nome quebraria as respostas.
+  Guardrail:
+    Type: AWS::Bedrock::Guardrail
+    Properties:
+      Name: !Sub ${AgentRuntimeName}_guardrail
+      Description: Entrada e saída do assistente da Kalman
+      BlockedInputMessaging: Não posso processar essa mensagem. Reformule a pergunta sobre as obrigações da sua empresa.
+      BlockedOutputsMessaging: Não posso responder isso. Reformule a pergunta sobre as obrigações da sua empresa.
+      ContentPolicyConfig:
+        FiltersConfig:
+          - { Type: PROMPT_ATTACK, InputStrength: HIGH, OutputStrength: NONE }   # a saída deve ser NONE neste filtro
+          - { Type: HATE, InputStrength: MEDIUM, OutputStrength: MEDIUM }
+          - { Type: INSULTS, InputStrength: MEDIUM, OutputStrength: MEDIUM }
+          - { Type: VIOLENCE, InputStrength: MEDIUM, OutputStrength: MEDIUM }
+          - { Type: SEXUAL, InputStrength: MEDIUM, OutputStrength: MEDIUM }
+          - { Type: MISCONDUCT, InputStrength: MEDIUM, OutputStrength: MEDIUM }
+      SensitiveInformationPolicyConfig:
+        PiiEntitiesConfig:
+          - { Type: EMAIL, Action: ANONYMIZE }
+          - { Type: PHONE, Action: ANONYMIZE }
+          - { Type: CREDIT_DEBIT_CARD_NUMBER, Action: BLOCK }
+          - { Type: CREDIT_DEBIT_CARD_CVV, Action: BLOCK }
+          - { Type: AWS_ACCESS_KEY, Action: BLOCK }
+          - { Type: AWS_SECRET_KEY, Action: BLOCK }
+          - { Type: PASSWORD, Action: BLOCK }
+        RegexesConfig:
+          - Name: cpf_formatado
+            Description: CPF no formato 000.000.000-00 (o CNPJ, com barra, não casa)
+            Pattern: "[0-9]{3}\\.[0-9]{3}\\.[0-9]{3}-[0-9]{2}"
+            Action: ANONYMIZE
+
+  GuardrailVersion:
+    Type: AWS::Bedrock::GuardrailVersion
+    Properties:
+      GuardrailIdentifier: !GetAtt Guardrail.GuardrailId
+      Description: !Sub revisao ${GuardrailRevisao}
+
+  # ---------------------------------------------------------------- role do runtime
+  AgentRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: bedrock-agentcore.amazonaws.com }
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals: { "aws:SourceAccount": !Ref AWS::AccountId }
+              ArnLike: { "aws:SourceArn": !Sub "arn:${AWS::Partition}:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:*" }
+      ManagedPolicyArns:
+        - !Ref AcessoLeituraGoldPolicyArn
+      Policies:
+        - PolicyName: agente-kalman
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: Modelo
+                Effect: Allow
+                Action: [bedrock:InvokeModel, bedrock:InvokeModelWithResponseStream]
+                Resource:
+                  - !Sub arn:${AWS::Partition}:bedrock:*::foundation-model/*
+                  - !Sub arn:${AWS::Partition}:bedrock:*:${AWS::AccountId}:inference-profile/*
+              - Sid: AplicarOGuardrail
+                Effect: Allow
+                Action: bedrock:ApplyGuardrail
+                Resource: !GetAtt Guardrail.GuardrailArn
+              - Sid: LogsDoRuntime
+                Effect: Allow
+                Action: [logs:CreateLogGroup, logs:DescribeLogStreams]
+                Resource: !Sub arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/bedrock-agentcore/runtimes/*
+              - Sid: LogsDoRuntimeLista
+                Effect: Allow
+                Action: logs:DescribeLogGroups
+                Resource: !Sub arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:*
+              - Sid: LogsDoRuntimeEscrita
+                Effect: Allow
+                Action: [logs:CreateLogStream, logs:PutLogEvents]
+                Resource: !Sub arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/bedrock-agentcore/runtimes/*:log-stream:*
+              - Sid: Rastreamento
+                Effect: Allow
+                Action: [xray:PutTraceSegments, xray:PutTelemetryRecords, xray:GetSamplingRules, xray:GetSamplingTargets]
+                Resource: "*"
+              - Sid: Metricas
+                Effect: Allow
+                Action: cloudwatch:PutMetricData
+                Resource: "*"
+                Condition:
+                  StringEquals: { "cloudwatch:namespace": bedrock-agentcore }
+              - Sid: IdentidadeDoRuntime
+                Effect: Allow
+                Action: [bedrock-agentcore:GetWorkloadAccessToken, bedrock-agentcore:GetWorkloadAccessTokenForJWT,
+                         bedrock-agentcore:GetWorkloadAccessTokenForUserId]
+                Resource:
+                  - !Sub arn:${AWS::Partition}:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:workload-identity-directory/default
+                  - !Sub arn:${AWS::Partition}:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:workload-identity-directory/default/workload-identity/${AgentRuntimeName}-*
+              - !If
+                - TemMemoria
+                - Sid: MemoriaDoAgente           # só a memória configurada, nada além
+                  Effect: Allow
+                  Action: bedrock-agentcore:*
+                  Resource: !Sub arn:${AWS::Partition}:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:memory/${MemoryId}
+                - !Ref AWS::NoValue
+
+  # ---------------------------------------------------------------- runtime
+  AgentRuntime:
+    Type: AWS::BedrockAgentCore::Runtime
+    Properties:
+      AgentRuntimeName: !Ref AgentRuntimeName
+      Description: Assistente da Kalman (cadastro, DOU e matriz de obrigações)
+      RoleArn: !GetAtt AgentRole.Arn
+      AgentRuntimeArtifact:
+        CodeConfiguration:
+          Code:
+            S3:
+              Bucket: !Ref CodeBucket
+              Prefix: !Ref CodeKey
+          Runtime: PYTHON_3_13
+          EntryPoint: [agent.py]
+      NetworkConfiguration:
+        NetworkMode: PUBLIC
+      # Sem AuthorizerConfiguration: a invocação exige credencial IAM (SigV4). Quem chama é a
+      # Lambda do stack chatbot-api, que valida o token do Cognito antes.
+      LifecycleConfiguration:
+        IdleRuntimeSessionTimeout: 900
+      EnvironmentVariables:
+        MODEL_ID: !Ref ModelId
+        ATHENA_WORKGROUP: !Ref AthenaWorkGroup
+        GUARDRAIL_ID: !GetAtt Guardrail.GuardrailId
+        GUARDRAIL_VERSION: !GetAtt GuardrailVersion.Version
+        MEMORY_ID: !If [TemMemoria, !Ref MemoryId, !Ref AWS::NoValue]
+        MAX_CHAMADAS: "6"
+        MAX_TOKENS: "1024"
+        LOG_LEVEL: INFO
+
+Outputs:
+  AgentRuntimeArn:
+    Description: ARN do runtime; o stack chatbot-api usa este valor
+    Value: !GetAtt AgentRuntime.AgentRuntimeArn
+  GuardrailId:
+    Value: !GetAtt Guardrail.GuardrailId
+  GuardrailVersion:
+    Value: !GetAtt GuardrailVersion.Version
+  AgentRoleArn:
+    Value: !GetAtt AgentRole.Arn

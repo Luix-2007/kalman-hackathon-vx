@@ -1,4 +1,4 @@
-.PHONY: build deploy clean
+.PHONY: build deploy agent-package agent-deploy clean
 
 REGION ?= us-east-1
 CADASTRO_STACK ?= cnpj-cadastro
@@ -19,5 +19,14 @@ deploy: build
 	  CadastroTableName=$(call saida,$(CADASTRO_STACK),TableName) \
 	  AgentRuntimeArn=$(call saida,$(AGENT_STACK),AgentRuntimeArn)
 
+# O agente (agent.py) vai em outra stack, chatbot-agent (runtime, role e Guardrail): ver runtime/.
+# make agent-deploy MODEL_ID=<modelo ou perfil de inferência do Bedrock>
+agent-package:
+	$(MAKE) -C runtime package
+
+agent-deploy:
+	$(MAKE) -C runtime deploy MODEL_ID="$(MODEL_ID)" MEMORY_ID="$(MEMORY_ID)"
+
 clean:
 	rm -rf .aws-sam
+	$(MAKE) -C runtime clean
