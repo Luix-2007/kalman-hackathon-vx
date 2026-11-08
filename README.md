@@ -31,59 +31,8 @@ propõe o que muda e avisa quem precisa decidir.
 
 Tudo é serverless e roda em `us-east-1`. Cada parte é uma stack SAM/CloudFormation independente.
 
-```mermaid
-flowchart LR
-  subgraph Usuario["Empresa"]
-    FRONT["Front React<br/>(Lovable)"]
-  end
+<img width="3660" height="2180" alt="kalman-arquitetura-aws" src="https://github.com/user-attachments/assets/8ba2b53e-448b-4445-92a7-37fc11d92169" />
 
-  subgraph Acesso["Acesso"]
-    COG["Amazon Cognito<br/>login + e-mails"]
-  end
-
-  subgraph APIs["APIs (API Gateway HTTP + Lambda)"]
-    CAD["cnpj-cadastro<br/>Lambda + SQS"]
-    MAT["matriz-api<br/>Lambda"]
-    CHAT["chatbot-api<br/>Lambda"]
-  end
-
-  subgraph Dados["Lakehouse (S3 + Iceberg)"]
-    DDB[("DynamoDB<br/>organizações e conversas")]
-    S3[("S3<br/>landing → bronze → silver → gold")]
-    GLUE["Glue Data Catalog<br/>+ Athena"]
-  end
-
-  subgraph Pipelines["Pipelines (Step Functions + Glue + DuckDB)"]
-    PDOU["lakehouse-dou<br/>DOU todo dia 05:00"]
-    PCAD["lakehouse-pipeline<br/>cadastro todo dia 02:00"]
-    PMAT["lakehouse-matriz<br/>matriz e tarefas"]
-    PKB["kb<br/>embeddings"]
-  end
-
-  subgraph IA["IA (Amazon Bedrock)"]
-    PROP["propostas<br/>Step Functions + Lambdas<br/>classifica atos e propõe versões"]
-    AGC["AgentCore Runtime<br/>IA do Kalman + Guardrail"]
-    AGCAD["AgentCore Runtime + Memory<br/>agente do cadastro (em preparação)"]
-    KB["Knowledge Base<br/>S3 Vectors"]
-  end
-
-  INPE["Imprensa Nacional<br/>(DOU)"] --> PDOU
-  RFB["OpenCNPJ<br/>(Receita)"] --> CAD
-
-  FRONT -- login --> COG
-  FRONT -- token --> CAD & MAT & CHAT
-  CAD --> DDB
-  DDB -- export --> PCAD
-  PCAD & PDOU & PMAT --> S3
-  S3 --- GLUE
-  PKB --> KB
-  PDOU --> PROP
-  PROP --> GLUE
-  MAT -- Athena --> GLUE
-  CHAT --> AGC
-  AGC --> GLUE & KB
-  CHAT --> DDB
-```
 
 | Stack | Pasta | Serviços | Papel |
 |---|---|---|---|
