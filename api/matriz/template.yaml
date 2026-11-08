@@ -47,6 +47,22 @@ Resources:
         ThrottlingBurstLimit: 20
         ThrottlingRateLimit: 10
 
+  # Uma decisão por (cnpj, obrigação, versão): o put condicional impede duas ao mesmo tempo
+  # (o Athena não tem transação). O TTL apaga a trava depois de alguns dias.
+  TravasTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: chave
+          AttributeType: S
+      KeySchema:
+        - AttributeName: chave
+          KeyType: HASH
+      TimeToLiveSpecification:
+        AttributeName: expira_em
+        Enabled: true
+
   MatrizFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -59,11 +75,16 @@ Resources:
       Environment:
         Variables:
           TABLE_NAME: !Ref CadastroTableName
+          TRAVAS_TABLE: !Ref TravasTable
           ATHENA_WORKGROUP: !Ref AthenaWorkGroup
       Policies:
         - DynamoDBReadPolicy:
             TableName: !Ref CadastroTableName
         - Statement:
+            - Sid: TravarDecisoes
+              Effect: Allow
+              Action: [dynamodb:PutItem, dynamodb:DeleteItem]
+              Resource: !GetAtt TravasTable.Arn
             - Sid: AthenaNoWorkgroupDoLake
               Effect: Allow
               Action: [athena:StartQueryExecution, athena:StopQueryExecution, athena:GetQueryExecution,

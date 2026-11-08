@@ -129,11 +129,16 @@ def gold_inicial(fake):
 def api(monkeypatch):
     monkeypatch.setenv("AWS_DEFAULT_REGION", "us-east-1")
     monkeypatch.setenv("TABLE_NAME", "t")
+    monkeypatch.setenv("TRAVAS_TABLE", "travas")
     with mock_aws():
         boto3.client("dynamodb").create_table(
             TableName="t", BillingMode="PAY_PER_REQUEST",
             AttributeDefinitions=[{"AttributeName": "user_id", "AttributeType": "S"}],
             KeySchema=[{"AttributeName": "user_id", "KeyType": "HASH"}])
+        boto3.client("dynamodb").create_table(
+            TableName="travas", BillingMode="PAY_PER_REQUEST",
+            AttributeDefinitions=[{"AttributeName": "chave", "AttributeType": "S"}],
+            KeySchema=[{"AttributeName": "chave", "KeyType": "HASH"}])
         t = boto3.resource("dynamodb").Table("t")
         t.put_item(Item={"user_id": "dono", "cnpj": CNPJ, "papel": "dono"})
         t.put_item(Item={"user_id": "membro", "cnpj": CNPJ, "papel": "membro"})
@@ -150,7 +155,7 @@ def api(monkeypatch):
         yield mod
 
 
-def chamar(api, sub, rota, corpo=None, id=None, query=None):
+def chamar(api, sub, rota, corpo=None, id=None, query=None, contexto=None):
     ev = {"routeKey": rota, "requestContext": {"http": {"method": rota.split()[0]}}}
     if sub:
         ev["requestContext"]["authorizer"] = {"jwt": {"claims": {"sub": sub}}}
@@ -160,7 +165,7 @@ def chamar(api, sub, rota, corpo=None, id=None, query=None):
         ev["queryStringParameters"] = query
     if corpo is not None:
         ev["body"] = corpo if isinstance(corpo, str) else json.dumps(corpo)
-    r = api.handler(ev)
+    r = api.handler(ev, contexto)
     return r["statusCode"], json.loads(r["body"])
 
 
@@ -243,6 +248,64 @@ def test_aprovar_move_a_tarefa_para_31_03_na_hora(api):
 
     code, body = chamar(api, "dono", "POST /obrigacoes/{id}/decisao", {"versao": 2, "decisao": "rejeitar"}, id="OBR-013")
     assert code == 409
+
+
+APROVAR = {"versao": 2, "decisao": "aprovar"}
+BRONZE = "SELECT decisao FROM bronze_db.matriz_decisoes"
+
+
+def falhar_no(monkeypatch, trecho):
+    """athena.executar falha nos SQLs que contêm `trecho` (os outros rodam no DuckDB)."""
+    original = athena.executar
+    def executar(q):
+        if trecho in q:
+            raise athena.ErroAthena("falha simulada")
+        return original(q)
+    monkeypatch.setattr(athena, "executar", executar)
+    return original
+
+
+def test_decisao_em_andamento_por_outra_requisicao_409_sem_gravar(api):
+    api._travas.put_item(Item={"chave": f"{CNPJ}#OBR-013#v2", "expira_em": 1})   # a outra aba chegou antes
+    code, body = chamar(api, "dono", "POST /obrigacoes/{id}/decisao", APROVAR, id="OBR-013")
+    assert code == 409 and body["erro"] == api.JA_DECIDIDA
+    assert api.fake.linhas(BRONZE) == []
+
+
+def test_falha_na_bronze_nao_grava_nada_e_deixa_repetir(api, monkeypatch):
+    original = falhar_no(monkeypatch, "bronze_db.matriz_decisoes")
+    code, body = chamar(api, "dono", "POST /obrigacoes/{id}/decisao", APROVAR, id="OBR-013")
+    assert code == 502 and "registrada" not in body["erro"]
+    assert api.fake.linhas("SELECT status FROM gold_db.matriz_obrigacoes WHERE obrigacao_id = 'OBR-013' "
+                           "AND versao = 2") == [{"status": "proposta"}]          # a gold não foi tocada
+    monkeypatch.setattr(athena, "executar", original)
+    code, _ = chamar(api, "dono", "POST /obrigacoes/{id}/decisao", APROVAR, id="OBR-013")
+    assert code == 200                                                        # a trava foi solta
+
+
+def test_falha_na_gold_depois_da_bronze_avisa_que_a_decisao_vale(api, monkeypatch, caplog):
+    falhar_no(monkeypatch, "INSERT INTO gold_db.matriz_tarefas")
+    code, body = chamar(api, "dono", "POST /obrigacoes/{id}/decisao", APROVAR, id="OBR-013")
+    assert code == 502 and body["erro"] == api.GOLD_PENDENTE
+    assert api.fake.linhas(BRONZE) == [{"decisao": "aprovar"}]             # o job refaz a gold a partir daqui
+    assert "gold ficou incompleta" in caplog.text
+    code, _ = chamar(api, "dono", "POST /obrigacoes/{id}/decisao", {"versao": 2, "decisao": "rejeitar"}, id="OBR-013")
+    assert code == 409                                                        # não dá para decidir de novo
+
+
+def test_sem_tempo_para_gravar_503_sem_gravar_nem_travar(api):
+    class Contexto:
+        def __init__(self, ms):
+            self.ms = ms
+        def get_remaining_time_in_millis(self):
+            return self.ms
+    code, body = chamar(api, "dono", "POST /obrigacoes/{id}/decisao", APROVAR, id="OBR-013",
+                        contexto=Contexto(api.MIN_MS_PARA_GRAVAR - 1))
+    assert code == 503 and body["erro"] == api.SEM_TEMPO
+    assert api.fake.linhas(BRONZE) == []
+    code, _ = chamar(api, "dono", "POST /obrigacoes/{id}/decisao", APROVAR, id="OBR-013",
+                     contexto=Contexto(api.MIN_MS_PARA_GRAVAR))
+    assert code == 200
 
 
 def test_rejeitar_mantem_30_04_sem_risco(api):
