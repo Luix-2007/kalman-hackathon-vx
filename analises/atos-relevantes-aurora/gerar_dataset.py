@@ -74,7 +74,8 @@ class Criterios:
         self.bruto = json.loads(caminho.read_text(encoding="utf-8"))
         c = self.bruto
         self.direta = regex_de(c["citacao_direta"]["termos"])
-        self.orgaos = {nome: (regex_de(o["termos"]), o.get("origem"), bool(o.get("basta_o_orgao")))
+        self.orgaos = {nome: (regex_de(o["termos"]), o.get("origem"), bool(o.get("basta_o_orgao")),
+                              regex_de(o.get("exceto_orgao", [])))
                        for nome, o in c["orgaos"].items() if not nome.startswith("_")}
         self.temas = {nome: regex_de(t["termos"]) for nome, t in c["temas"].items() if not nome.startswith("_")}
         self.temas_fracos = {nome for nome, t in c["temas"].items() if not nome.startswith("_") and t.get("fraco")}
@@ -96,7 +97,8 @@ class Criterios:
         tudo = orgao + " " + corpo
 
         direta = achados(self.direta, tudo)
-        orgaos = {n: origem for n, (rx, origem, _) in self.orgaos.items() if achados(rx, orgao)}
+        orgaos = {n: origem for n, (rx, origem, _, exceto) in self.orgaos.items()
+                  if achados(rx, orgao) and not achados(exceto, orgao)}
         basta = any(self.orgaos[n][2] for n in orgaos)
         temas = {n: achados(rx, corpo) for n, rx in self.temas.items()}
         temas = {n: t for n, t in temas.items() if t}
@@ -109,8 +111,10 @@ class Criterios:
         elif fora and not orgaos and not set(temas) - self.temas_fracos:
             nivel, motivo = "descartado", (f"fora de escopo ({', '.join(fora)}) sem órgão do perfil"
                                            + (" e só com tema genérico" if temas else " e sem tema"))
-        elif orgaos and temas:
+        elif orgaos and set(temas) - self.temas_fracos:
             nivel, motivo = "alto", f"órgão {', '.join(orgaos)} + tema {', '.join(temas)}"
+        elif orgaos and temas:
+            nivel, motivo = "medio", f"órgão {', '.join(orgaos)} + só tema genérico {', '.join(temas)}"
         elif temas:
             nivel, motivo = "medio", f"tema {', '.join(temas)} sem órgão do perfil"
         elif basta:
@@ -167,7 +171,10 @@ def conferir_perfil(stack: str) -> tuple[str, list[str]]:
     item = tabela.get_item(Key={"user_id": "CNPJ#KALMANTESTE100"}, ProjectionExpression="dados").get("Item")
     if not item:
         return "DynamoDB: organização CNPJ#KALMANTESTE100 não existe (rode make api-seed-aurora)", []
-    atual = json.loads(json.dumps(item.get("dados") or {}, default=str))
+    # O DynamoDB devolve números como Decimal: volta para int/float antes de comparar com o JSON.
+    def numero(v):
+        return int(v) if v == int(v) else float(v)
+    atual = json.loads(json.dumps(item.get("dados") or {}, default=numero))
     difs = [c for c in CAMPOS_DO_PERFIL if atual.get(c) != base.get(c)]
     return f"DynamoDB ({outputs['TableName']})", difs
 
@@ -300,7 +307,7 @@ Gerado em {datetime.now(timezone.utc):%Y-%m-%d %H:%M} UTC.
 
 | tema | atos |
 |---|---|
-{tabela(collections.Counter(t.split('(')[0] for l in relevantes for t in (l['temas'].split('; ') if l['temas'] else ['(nenhum)'])))}
+{tabela(collections.Counter(t.split('(')[0] if l['temas'] else '(nenhum)' for l in relevantes for t in (l['temas'].split('; ') if l['temas'] else [''])))}
 
 ## Como revisar
 

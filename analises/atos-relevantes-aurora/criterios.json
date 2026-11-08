@@ -16,11 +16,11 @@
   },
 
   "orgaos": {
-    "_sobre": "Comparados com o campo orgao do DOU (hierarquia 'Ministério/.../Órgão'). CETESB, SP Águas e CBPMESP são estaduais e não publicam no DOU; ONS e CCEE não são órgãos públicos e só aparecem citados no texto (estão no tema setor_eletrico). basta_o_orgao: o ato entra (nível médio) mesmo sem tema; nos outros órgãos, que publicam muito ato genérico, é preciso um tema.",
+    "_sobre": "Comparados com o campo orgao do DOU (hierarquia 'Ministério/.../Órgão'). CETESB, SP Águas e CBPMESP são estaduais e não publicam no DOU; ONS e CCEE não são órgãos públicos e só aparecem citados no texto (estão no tema setor_eletrico). basta_o_orgao: o ato entra (nível baixo) mesmo sem tema; nos outros órgãos, que publicam muito ato genérico, é preciso um tema. exceto_orgao: subordinados que não contam (ANM e ANP ficam embaixo do MME).",
     "ANEEL": {"origem": "perfil", "basta_o_orgao": true, "termos": ["agencia nacional de energia eletrica"]},
     "MTE":   {"origem": "perfil", "termos": ["ministerio do trabalho e emprego", "ministerio do trabalho e previdencia", "ministerio do trabalho"]},
     "RFB":   {"origem": "perfil", "termos": ["receita federal do brasil", "secretaria especial da receita federal"]},
-    "MME":   {"origem": "inferido", "termos": ["ministerio de minas e energia"]},
+    "MME":   {"origem": "inferido", "termos": ["ministerio de minas e energia"], "exceto_orgao": ["agencia nacional de mineracao", "agencia nacional do petroleo"]},
     "ANA":   {"origem": "inferido", "termos": ["agencia nacional de aguas"]}
   },
 
@@ -43,7 +43,7 @@
     ]},
     "licenciamento_ambiental": {"origem": "perfil", "termos": [
       "licenciamento ambiental", "licenca de operacao", "licenca ambiental", "licenca previa", "licenca de instalacao",
-      "ibama", "conama"
+      "conama"
     ]},
     "recursos_hidricos": {"origem": "perfil", "termos": [
       "recursos hidricos", "outorga de direito de uso", "outorga de uso de recursos hidricos", "bacia hidrografica",
@@ -60,7 +60,7 @@
     "tarifas": {"origem": "perfil", "termos": [
       "reajuste tarifario", "revisao tarifaria", "tarifa de energia", "tarifas de energia", "tusd", "tust",
       "bandeira tarifaria", "bandeiras tarifarias", "tfsee", "taxa de fiscalizacao de servicos de energia eletrica",
-      "conta de desenvolvimento energetico", "cde"
+      "conta de desenvolvimento energetico"
     ]},
     "societario": {"origem": "perfil", "termos": [
       "transferencia de controle", "anuencia previa", "reorganizacao societaria", "transferencia de concessao"
@@ -79,7 +79,7 @@
   },
 
   "score": {
-    "_sobre": "nivel: direto (cita a empresa) > alto (órgão + tema) > medio (só tema) > baixo (só órgão com basta_o_orgao). score = base do nível + bônus.",
+    "_sobre": "nivel: direto (cita a empresa) > alto (órgão + tema que não seja fraco) > medio (só tema, ou órgão + só tema fraco) > baixo (só órgão com basta_o_orgao). score = base do nível + bônus.",
     "base": {"direto": 100, "alto": 60, "medio": 30, "baixo": 15},
     "por_tema_extra": 5,
     "regiao": 5,
