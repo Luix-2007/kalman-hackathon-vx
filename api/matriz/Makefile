@@ -19,7 +19,8 @@ deploy: build
 	  UserPoolClientId=$(call saida,$(CADASTRO_STACK),UserPoolClientId) \
 	  CadastroTableName=$(call saida,$(CADASTRO_STACK),TableName) \
 	  LakeBucketName=$(call saida,$(PIPELINE_STACK),LakeBucketName) \
-	  AthenaWorkGroup=$(call saida,$(PIPELINE_STACK),AthenaWorkGroupName) 	  MatrizStateMachineArn=$(call saida,$(MATRIZ_STACK),StateMachineArn)
+	  AthenaWorkGroup=$(call saida,$(PIPELINE_STACK),AthenaWorkGroupName) \
+	  MatrizStateMachineArn=$(call saida,$(MATRIZ_STACK),StateMachineArn)
 
 clean:
 	rm -rf .aws-sam
