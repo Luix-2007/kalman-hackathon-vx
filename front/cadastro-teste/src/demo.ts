@@ -12,7 +12,8 @@
  *
  * A empresa de exemplo é a Light SESA (CNPJ 60.444.437/0001-46), com os dados públicos da Receita salvos em
  * src/dados/light-opencnpj.json: nada é consultado no modo demo.
- * No build de produção o modo não existe. Para tirá-lo do projeto: apague este arquivo e as referências a
+ * No build de produção o modo só existe com VITE_DEMO=1 (no .env versionado da Lovable, para mostrar o dash sem login
+ * na URL pública: https://<site>/painel?demo=dash). Sem a variável, ?demo não faz nada. Para tirá-lo do projeto: apague este arquivo e as referências a
  * demoApi, demoAuth, demoAtivo, demoLogado e DEMO_EMAIL no App.tsx.
  */
 import type { Cadastro, Convite, Empresa, Membros } from "./api";
@@ -21,7 +22,9 @@ import { lerCsv } from "./planilha";
 import light from "./dados/light-opencnpj.json";
 
 const params = new URLSearchParams(location.search);
-export const demoAtivo = import.meta.env.DEV && params.has("demo");
+/** Em dev sempre disponível; no build publicado só com VITE_DEMO=1 (ex.: a URL da Lovable para o pitch). */
+export const demoPermitido = import.meta.env.DEV || import.meta.env.VITE_DEMO === "1";
+export const demoAtivo = demoPermitido && params.has("demo");
 const modo = params.get("demo");
 export const demoLogado = demoAtivo && ["vazio", "dados", "membro", "convite", "dash"].includes(modo ?? "");
 

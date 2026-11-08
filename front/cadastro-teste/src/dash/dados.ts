@@ -232,14 +232,16 @@ export type Estado = {
   semMatriz: boolean;
   /** último processamento da matriz (GET /importacoes); RUNNING = análise em andamento */
   processamento: Processamento;
+  /** quando começou o carregamento em andamento (para o tempo e a estimativa na tela) */
+  carregandoDesde: number | null;
 };
 
 let proximaAtualizacao: number | undefined;
 
 let estado: Estado = MODO_REAL
-  ? { obrigacoes: [], versoesAntigas: [], versoesPorId: {}, tarefas: [], historico: [], conversas: [], carregando: true, erro: null, semMatriz: false, processamento: null }
+  ? { obrigacoes: [], versoesAntigas: [], versoesPorId: {}, tarefas: [], historico: [], conversas: [], carregando: true, erro: null, semMatriz: false, processamento: null, carregandoDesde: Date.now() }
   : { obrigacoes: [...VIGENTES, ...PROPOSTAS], versoesAntigas: [], versoesPorId: {}, tarefas: TAREFAS, historico: HISTORICO, conversas: CONVERSAS,
-      carregando: false, erro: null, semMatriz: false, processamento: null };
+      carregando: false, erro: null, semMatriz: false, processamento: null, carregandoDesde: null };
 const ouvintes = new Set<() => void>();
 const mudar = (f: (e: Estado) => Estado) => { estado = f(estado); ouvintes.forEach((o) => o()); };
 
@@ -317,7 +319,7 @@ export const acoes = {
   async carregar(silencioso = false) {
     if (!MODO_REAL) return;
     window.clearTimeout(proximaAtualizacao);
-    if (!silencioso) mudar((e) => ({ ...e, carregando: true, erro: null }));
+    if (!silencioso) mudar((e) => ({ ...e, carregando: true, erro: null, carregandoDesde: Date.now() }));
     try {
       const [o, t, l, imp] = await Promise.all([apiMatriz.getObrigacoes(), apiMatriz.getTarefas(), apiMatriz.getLinhaDoTempo(),
         apiMatriz.getImportacoes().catch(() => null)]);

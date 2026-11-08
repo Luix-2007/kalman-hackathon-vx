@@ -153,7 +153,7 @@ export function Dash({ cadastro, email, nome, onSair, equipe }: {
           return null;
         })()}
         {loja.carregando && !/\/(ia|configuracoes)/.test(local.pathname) ? (
-          <div className="d-carregando" role="status"><Robo estado="pensando" tamanho={56} /><p>Carregando a matriz da empresa…</p></div>
+          <CarregandoMatriz desde={loja.carregandoDesde} />
         ) : loja.processamento?.estado === "RUNNING" && loja.obrigacoes.length === 0 && !/\/(ia|configuracoes)/.test(local.pathname) ? (
           <Analisando inicio={loja.processamento.inicio} email={email} />
         ) : (
@@ -170,6 +170,31 @@ export function Dash({ cadastro, email, nome, onSair, equipe }: {
         <DetalheObrigacao ctx={ctx} />
       </main>
     </div>
+  );
+}
+
+/** Carregamento dos dados da empresa: 4 consultas em paralelo (obrigações, tarefas, linha do tempo e importações), cada uma
+ *  no Athena. Costuma levar alguns segundos; a estimativa é conservadora. */
+const CARGA_TIPICA_S = 10;
+const CARGA_LENTA_S = 30;
+
+function CarregandoMatriz({ desde }: { desde: number | null }) {
+  const [agora, setAgora] = useState(Date.now());
+  useEffect(() => { const t = window.setInterval(() => setAgora(Date.now()), 500); return () => window.clearInterval(t); }, []);
+  const s = Math.max(0, (agora - (desde ?? agora)) / 1000);
+  const faltam = Math.ceil(CARGA_TIPICA_S - s);
+  const estimativa = faltam >= 1 ? `faltam cerca de ${faltam} s` : s < CARGA_LENTA_S ? "quase lá" : "está demorando mais que o normal";
+  const pct = Math.min(95, Math.round((s / CARGA_TIPICA_S) * 100));
+  return (
+    <section className="d-analisando" role="status" aria-live="polite">
+      <Robo estado="pensando" tamanho={120} />
+      <h2>Carregando a matriz da empresa</h2>
+      <p><b className="k-mono">{Math.floor(s)} s</b> · <b>{estimativa}</b></p>
+      <span className="d-analisando-barra" role="progressbar" aria-label="Carregando a matriz" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}>
+        <i style={{ width: `${pct}%` }} />
+      </span>
+      <p className="d-nota">Obrigações, tarefas e mudanças da empresa.</p>
+    </section>
   );
 }
 
@@ -192,7 +217,7 @@ function Analisando({ inicio, email }: { inicio: string; email: string }) {
   const hora = comeco.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
   return (
     <section className="d-analisando" role="status" aria-live="polite">
-      <Robo estado="pensando" tamanho={84} />
+      <Robo estado="pensando" tamanho={120} />
       <h2>Analisando a matriz da empresa</h2>
       <p>Começou às <b className="k-mono">{hora}</b> · <b>{estimativa}</b></p>
       <span className="d-analisando-barra" role="progressbar" aria-label="Análise da matriz" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}>

@@ -477,11 +477,12 @@ span.d-tarefa-status { font-size: 0.76rem; color: var(--d-texto-3); }
 .d-erro > span { flex: 1; }
 .d-faixa--info { background: var(--d-sup-2); border-color: var(--d-linha); }
 .d-analisando { min-height: 70svh; max-width: 30rem; margin-inline: auto; display: grid; place-content: center; justify-items: center; text-align: center; gap: 0.7rem; }
-.d-analisando h2 { font-size: clamp(1.3rem, 2vw, 1.6rem); margin-top: 0.5rem; }
-.d-analisando p { margin: 0; color: var(--d-texto-2); font-size: 0.92rem; }
+.d-analisando h2 { font-size: clamp(1.5rem, 2.4vw, 1.95rem); margin-top: 0.75rem; }
+.d-analisando p { margin: 0; color: var(--d-texto-2); font-size: 1rem; }
+.d-analisando .d-nota { font-size: 0.86rem; }
 .d-analisando b { color: var(--d-texto); font-weight: 600; }
 .d-analisando .k-btn { margin-top: 0.5rem; }
-.d-analisando-barra { width: min(20rem, 80vw); height: 4px; border-radius: 2px; background: var(--d-sup-2); overflow: hidden; margin-block: 0.4rem; }
+.d-analisando-barra { width: min(24rem, 80vw); height: 6px; border-radius: 2px; background: var(--d-sup-2); overflow: hidden; margin-block: 0.4rem; }
 .d-analisando-barra i { position: relative; display: block; height: 100%; border-radius: 2px; background: var(--d-laranja); overflow: hidden; transition: width 1s var(--k-ease-out); }
 /* brilho que corre na parte preenchida: mostra que está andando mesmo quando a barra para em 95% */
 .d-analisando-barra i::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.55), transparent); transform: translateX(-100%); }
