@@ -1,9 +1,9 @@
 """
 Teste de integração cnpj-cadastro -> lakehouse -> chatbot (agent.py), contra a AWS.
 
-    make api-integracao
-    make api-integracao ARGS="--com-llm"     # também chama o modelo (precisa de MODEL_ID)
-    make api-integracao ARGS="--cnpj 33000167000101 --timeout-pipeline 3600"
+    make ia-chatbot-integracao
+    make ia-chatbot-integracao ARGS="--com-llm"     # também chama o modelo (precisa de MODEL_ID)
+    make ia-chatbot-integracao ARGS="--cnpj 33000167000101 --timeout-pipeline 3600"
 
 O contrato entre as duas partes é o CNPJ: o da organização que a API grava no DynamoDB
 precisa chegar nas views do gold, onde o agente filtra (`WHERE cnpj = ?`). Quem leva o dado
@@ -36,7 +36,7 @@ from pathlib import Path
 import boto3
 
 AQUI = Path(__file__).resolve().parent
-sys.path.insert(0, str(AQUI.parents[1] / "cnpj-cadastro" / "tests"))  # smoke_lib
+sys.path.insert(0, str(AQUI.parents[2] / "api" / "cnpj-cadastro" / "tests"))  # smoke_lib
 sys.path.insert(0, str(AQUI.parent))                                   # agent.py
 
 from smoke_lib import Smoke, http  # noqa: E402

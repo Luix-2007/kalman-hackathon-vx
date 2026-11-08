@@ -29,4 +29,4 @@ dist/
 .claude/
 
 # Pacote do agente do chatbot (zip gerado pelo make)
-api/chatbot/runtime/build/
+ia/chatbot/build/

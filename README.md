@@ -148,7 +148,7 @@ Front ──Bearer (Cognito)──> HTTP API ──> Lambda chatbot-api ──IA
                                            └ limita as mensagens por usuário (DynamoDB)
 ```
 
-São duas stacks: **`chatbot-agent`** (runtime, role e Guardrail, em `api/chatbot/runtime/`) e **`chatbot-api`** (a Lambda de entrada, em `api/chatbot/src/`).
+São duas stacks, em pastas separadas: **`chatbot-api`** (a Lambda de entrada, aqui em `api/chatbot/`, uma API como as outras) e **`chatbot-agent`** (o agente de IA, em [`ia/chatbot/`](#iachatbot)). O agente não é uma API: ninguém o chama a não ser a Lambda.
 
 ### API de entrada
 
@@ -163,6 +163,10 @@ São duas stacks: **`chatbot-agent`** (runtime, role e Guardrail, em `api/chatbo
 | **502 / 504** | o agente falhou (mensagem genérica; o motivo fica só no log) / demorou mais de ~26 s |
 
 Quem garante a identidade é a Lambda: o `sub` vem do token, o CNPJ vem da tabela do cadastro (nunca do corpo), e a sessão do runtime é `sha256(sub:session_id)`, então ninguém entra na conversa de outro usuário. Dono e membros conversam (é leitura). O log tem uma linha por pedido (latência, nº de consultas, resultado, um identificador curto do usuário e o CNPJ), nunca a pergunta, a resposta nem o `sub`; a retenção é de 30 dias.
+
+## ia/chatbot
+
+O agente de IA do chatbot (`agent.py`, Strands + Bedrock AgentCore), invocado só pela Lambda de [`api/chatbot`](#apichatbot). A pasta `ia/` tem o próprio ambiente Python (`ia/pyproject.toml`, Python 3.13, igual ao runtime) e um `Makefile`, e cada agente tem seu `template.yaml`.
 
 ### Agente (`agent.py`)
 
@@ -185,23 +189,24 @@ Proteções do agente:
 ### Implantação
 
 ```bash
-make chatbot-agent-deploy MODEL_ID=<modelo ou perfil de inferência do Bedrock>   # stack chatbot-agent (MEMORY_ID opcional)
-make chatbot-deploy                                                              # stack chatbot-api (precisa do agente antes)
-make front-env                                                                   # o front de teste ganha o painel do assistente
+make ia-chatbot-deploy MODEL_ID=<modelo ou perfil de inferência do Bedrock>   # stack chatbot-agent, em ia/chatbot (MEMORY_ID opcional)
+make chatbot-deploy                                                            # stack chatbot-api, em api/chatbot (precisa do agente antes)
+make front-env                                                                 # o front de teste ganha o painel do assistente
 ```
 
-O `chatbot-agent-deploy` gera o zip do agente (dependências do `uv.lock` para Linux arm64, ~30 MB), envia ao bucket do SAM com o hash no nome e implanta. O runtime usa a policy de leitura do lake (`AcessoLeituraGoldPolicy`) porque as views `vw_*` leem silver e gold: o isolamento por empresa é feito no código do agente.
+O `ia-chatbot-deploy` gera o zip do agente (dependências do `uv.lock` para Linux arm64, ~30 MB), envia ao bucket do SAM com o hash no nome e implanta. O runtime usa a policy de leitura do lake (`AcessoLeituraGoldPolicy`) porque as views `vw_*` leem silver e gold: o isolamento por empresa é feito no código do agente.
 
 ### Testes e avaliação
 
 ```bash
-make api-test                                   # sem AWS: agente (contrato, escopo, limites, falhas), Lambda e o harness de avaliação
-make api-chatbot-eval                           # com o modelo de verdade (MODEL_ID), dados fixos
-make api-chatbot-eval ARGS="--dados-reais"      # consulta a Aurora no lake
-make api-chatbot-eval ARGS="--caso outra_empresa --repeticoes 3 --mostrar"
+make ia-test                                    # sem AWS: agente (contrato, escopo, limites, falhas) e harness de avaliação
+make api-test                                   # sem AWS: a Lambda de entrada (identidade, limite por usuário, falhas)
+make ia-chatbot-eval                            # com o modelo de verdade (MODEL_ID), dados fixos
+make ia-chatbot-eval ARGS="--dados-reais"       # consulta a Aurora no lake
+make ia-chatbot-eval ARGS="--caso outra_empresa --repeticoes 3 --mostrar"
 ```
 
-`api/chatbot/evals/casos.json` tem os casos: pergunta sobre a própria empresa, tarefas em risco, quem mudou a OBR-013, quem aprovou, pedido de outra empresa (com e sem instrução no prompt), assunto fora do escopo, pergunta sem dado e uma instrução plantada na ementa de um ato. Em toda resposta o avaliador confere que as consultas usam o CNPJ da sessão, que datas, ids de obrigação e CNPJs citados vieram das ferramentas (ou da pergunta) e que nenhum identificador de usuário aparece.
+`ia/chatbot/evals/casos.json` tem os casos: pergunta sobre a própria empresa, tarefas em risco, quem mudou a OBR-013, quem aprovou, pedido de outra empresa (com e sem instrução no prompt), assunto fora do escopo, pergunta sem dado e uma instrução plantada na ementa de um ato. Em toda resposta o avaliador confere que as consultas usam o CNPJ da sessão, que datas, ids de obrigação e CNPJs citados vieram das ferramentas (ou da pergunta) e que nenhum identificador de usuário aparece.
 
 ### Integração com o cnpj-cadastro
 
@@ -214,11 +219,11 @@ API cnpj-cadastro ──> DynamoDB ──(pipeline do stack lakehouse-pipeline, 
 O contrato é o **CNPJ**: o da organização que a API grava precisa chegar às views do gold, onde o agente filtra `WHERE cnpj = ?`. Em produção quem descobre o CNPJ do usuário é a Lambda; o teste de integração usa o que o `GET /cadastro/me` devolve. A matriz vem direto de `gold_db.matriz_*` (`pipeline/matriz/`), sem passar pelo pipeline do cadastro.
 
 ```bash
-make api-integracao                    # cadastro -> pipeline -> ferramentas do agente
-make api-integracao ARGS="--com-llm"   # também chama o modelo (precisa de MODEL_ID no ambiente)
+make ia-chatbot-integracao                    # cadastro -> pipeline -> ferramentas do agente
+make ia-chatbot-integracao ARGS="--com-llm"   # também chama o modelo (precisa de MODEL_ID no ambiente)
 ```
 
-O teste (`api/chatbot/tests/integracao_cadastro.py`) usa suas credenciais AWS e:
+O teste (`ia/chatbot/tests/integracao_cadastro.py`) usa suas credenciais AWS e:
 
 1. pela API, cria um dono (A), um membro que aceitou o convite (B) e um usuário sem organização (C)
 2. dispara o pipeline do lakehouse e espera terminar (~15 min, por causa do export do DynamoDB)

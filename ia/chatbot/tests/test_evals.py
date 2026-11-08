@@ -1,5 +1,5 @@
 """
-O harness de avaliação (api/chatbot/evals), sem AWS e sem modelo: as conferências pegam o
+O harness de avaliação (ia/chatbot/evals), sem AWS e sem modelo: as conferências pegam o
 que devem pegar, as fixtures cobrem todas as ferramentas e o runner liga as peças.
 """
 

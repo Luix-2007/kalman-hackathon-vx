@@ -1,9 +1,9 @@
 """
 Avaliação do comportamento do agente com o modelo de verdade (Bedrock).
 
-    make api-chatbot-eval                                  dados fixos (a Aurora no dia da demo)
-    make api-chatbot-eval ARGS="--dados-reais"             consulta a Aurora no lake (Athena)
-    make api-chatbot-eval ARGS="--caso tarefas_em_risco --repeticoes 3"
+    make ia-chatbot-eval                                  dados fixos (a Aurora no dia da demo)
+    make ia-chatbot-eval ARGS="--dados-reais"             consulta a Aurora no lake (Athena)
+    make ia-chatbot-eval ARGS="--caso tarefas_em_risco --repeticoes 3"
 
 Precisa de credenciais AWS com acesso ao Bedrock e de MODEL_ID no ambiente (o mesmo do runtime).
 Com dados fixos, o resultado depende só do modelo e do prompt; com --dados-reais, também do

@@ -1,0 +1,20 @@
+[project]
+name = "ia"
+version = "0.1.0"
+description = "Agentes de IA da Kalman (Bedrock AgentCore + Strands): uma pasta por agente, cada uma com seu template"
+# O runtime do AgentCore usa Python 3.13 (PYTHON_3_13 no template)
+requires-python = ">=3.13"
+dependencies = [
+    "bedrock-agentcore>=1.25.4",
+    "strands-agents>=1.64.0",
+]
+
+[dependency-groups]
+dev = [
+    "boto3",
+    "pytest",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["*/tests"]
+python_files = ["test_*.py"]  # integracao_*.py roda contra a AWS, só via make
