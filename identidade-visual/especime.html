@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kalman · identidade visual</title>
+<meta name="description" content="Espécime da identidade Laudo do Kalman: marca, cores, tipografia, componentes e movimento.">
+<link rel="icon" href="marca/kalman-favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="css/tokens.css">
+<link rel="stylesheet" href="css/base.css">
+<link rel="stylesheet" href="css/componentes.css">
+<script src="js/revelar.js" defer></script>
+<style>
+  /* só para montar esta página de espécime */
+  .esp-secao { padding-block: 4rem; border-top: 1px solid var(--k-linha); }
+  .esp-grade { display: grid; gap: 1.25rem; grid-template-columns: repeat(auto-fill, minmax(min(100%, 15rem), 1fr)); margin-top: 2rem; }
+  .esp-cor { border: 1px solid var(--k-linha); border-radius: var(--k-raio-card); overflow: hidden; }
+  .esp-cor div { height: 6rem; }
+  .esp-cor p { padding: 0.75rem 0.9rem; font-size: 0.85rem; display: grid; gap: 0.15rem; }
+  .esp-cor b { font-weight: 600; }
+  .esp-cor .k-mono { color: var(--k-tinta-3); font-size: 0.78rem; }
+  .esp-marca { display: grid; place-items: center; min-height: 9rem; border: 1px solid var(--k-linha); border-radius: var(--k-raio-card); padding: 1.5rem; }
+  .esp-marca img { max-width: 100%; max-height: 4.5rem; }
+  .esp-legenda { margin-top: 0.6rem; font-size: var(--k-t-legenda); color: var(--k-tinta-3); }
+  .esp-tipos > * + * { margin-top: 1.25rem; }
+  .esp-linha { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center; margin-top: 1.5rem; }
+  .esp-duas { display: grid; gap: 1.5rem; margin-top: 2rem; }
+  @media (min-width: 900px) { .esp-duas { grid-template-columns: 1fr 1fr; } }
+  .esp-regra { display: grid; gap: 0.35rem; padding: 1rem 1.1rem; border-left: 3px solid var(--k-laranja); background: var(--k-ceu-claro); border-radius: 0 var(--k-raio-controle) var(--k-raio-controle) 0; }
+  .esp-regra.nao { border-left-color: var(--k-grafite); }
+  .esp-regra p { font-size: 0.9rem; color: var(--k-tinta-2); }
+</style>
+</head>
+<body>
+
+<header class="k-moldura k-entra" style="padding-block: 3.5rem 3rem">
+  <p class="k-rotulo"><span class="k-ponto"></span>&nbsp; Identidade visual · versão Laudo</p>
+  <h1 style="margin-top: 1.25rem">Entra o ruído. Sai o sinal<span class="k-ponto-final">.</span></h1>
+  <p style="margin-top: 1.25rem; max-width: 52ch; font-size: var(--k-t-apoio); color: var(--k-tinta-2)">
+    Grafite, laranja e branco, como um laudo técnico bem feito. O laranja é o sinal: marca a ação, o prazo e o trecho que importa.
+  </p>
+</header>
+
+<!-- ── marca ─────────────────────────────────────────────────────────── -->
+<section class="esp-secao">
+  <div class="k-moldura">
+    <div class="k-cabecalho k-revelar">
+      <p class="k-rotulo"><b>01</b> · Marca</p>
+      <h2>Muitas medições, uma estimativa.</h2>
+      <p>Dois traços céu e um branco, irregular, convergem numa reta. O ponto laranja é a tarefa.</p>
+    </div>
+    <div class="esp-grade">
+      <div><div class="esp-marca"><img src="marca/kalman-horizontal.svg" alt="Kalman, horizontal"></div><p class="esp-legenda">kalman-horizontal.svg · fundo claro</p></div>
+      <div><div class="esp-marca" style="background: var(--k-grafite)"><img src="marca/kalman-horizontal-escuro.svg" alt="Kalman, horizontal escuro"></div><p class="esp-legenda">kalman-horizontal-escuro.svg · fundo grafite</p></div>
+      <div><div class="esp-marca"><img src="marca/kalman-icone.svg" alt="Ícone Kalman" style="height: 4.5rem"></div><p class="esp-legenda">kalman-icone.svg · 40 × 40</p></div>
+      <div><div class="esp-marca"><img src="marca/kalman-wordmark.svg" alt="kalman" style="height: 2.5rem"></div><p class="esp-legenda">kalman-wordmark.svg · palavra em contorno</p></div>
+      <div><div class="esp-marca"><img src="marca/kalman-app.svg" alt="Ícone de app" style="height: 5.5rem; border-radius: 22%"></div><p class="esp-legenda">kalman-app.svg · app e favicon (512)</p></div>
+      <div><div class="esp-marca" style="padding: 0; overflow: hidden"><img src="marca/motivo-convergencia.svg" alt="Motivo de convergência" style="max-height: none; width: 100%"></div><p class="esp-legenda">motivo-convergencia.svg · o ícone em grande</p></div>
+    </div>
+    <div class="esp-duas">
+      <div class="esp-regra"><b>Faça</b><p>Respiro mínimo em volta da marca igual à altura do ponto laranja × 2. Tamanho mínimo: ícone 16 px (favicon), horizontal 96 px de largura.</p></div>
+      <div class="esp-regra nao"><b>Não faça</b><p>Recolorir o ícone, trocar o laranja do ponto, esticar, pôr sombra ou usar a palavra "kalman" digitada em vez do contorno.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ── cor ───────────────────────────────────────────────────────────── -->
+<section class="esp-secao">
+  <div class="k-moldura">
+    <div class="k-cabecalho k-revelar">
+      <p class="k-rotulo"><b>02</b> · Cor</p>
+      <h2>Grafite manda. Laranja sinaliza.</h2>
+      <p>Página branca, texto grafite, céu para apoio. Laranja só onde algo exige ação.</p>
+    </div>
+    <div class="esp-grade">
+      <div class="esp-cor"><div style="background: var(--k-grafite)"></div><p><b>Grafite</b><span class="k-mono">#0E1A24 · --k-grafite</span><span>Texto, blocos escuros. 17.6:1 no branco.</span></p></div>
+      <div class="esp-cor"><div style="background: var(--k-laranja)"></div><p><b>Laranja</b><span class="k-mono">#FF5A1F · --k-laranja</span><span>Ação, grifo, prazo. Texto sobre ele: grafite (5.6:1).</span></p></div>
+      <div class="esp-cor"><div style="background: var(--k-branco); border-bottom: 1px solid var(--k-linha)"></div><p><b>Branco</b><span class="k-mono">#FFFFFF · --k-branco</span><span>Fundo da página.</span></p></div>
+      <div class="esp-cor"><div style="background: var(--k-ceu)"></div><p><b>Céu</b><span class="k-mono">#BFD9EA · --k-ceu</span><span>Traços, gráficos, selos.</span></p></div>
+      <div class="esp-cor"><div style="background: var(--k-ceu-claro)"></div><p><b>Céu claro</b><span class="k-mono">#EAF2F7 · --k-ceu-claro</span><span>Seções, citações, chips.</span></p></div>
+      <div class="esp-cor"><div style="background: var(--k-tinta-2)"></div><p><b>Tinta 2</b><span class="k-mono">#45525E · --k-tinta-2</span><span>Texto de apoio. 8.0:1.</span></p></div>
+      <div class="esp-cor"><div style="background: var(--k-tinta-3)"></div><p><b>Tinta 3</b><span class="k-mono">#66727D · --k-tinta-3</span><span>Legenda e fonte, só no branco (4.9:1).</span></p></div>
+      <div class="esp-cor"><div style="background: var(--k-grafite-2)"></div><p><b>Grafite 2 · 3</b><span class="k-mono">#172633 · #24384A</span><span>Superfícies e hover sobre grafite.</span></p></div>
+    </div>
+    <div class="esp-duas">
+      <div class="esp-regra"><b>Proporção</b><p>Cerca de 70% branco, 20% grafite, 8% céu, 2% laranja. Se o laranja passa de um elemento por tela, ele deixa de ser sinal.</p></div>
+      <div class="esp-regra nao"><b>Contraste</b><p>Branco sobre laranja dá 3.1:1: não use em texto. Laranja como cor de texto, só em título grande (24 px ou mais) ou no ponto final.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ── tipografia ────────────────────────────────────────────────────── -->
+<section class="esp-secao">
+  <div class="k-moldura">
+    <div class="k-cabecalho k-revelar">
+      <p class="k-rotulo"><b>03</b> · Tipografia</p>
+      <h2>Instrument Sans e IBM Plex Mono.</h2>
+      <p>A sans para ler. A mono para tudo que é dado: ato, artigo, CNPJ, prazo, contagem.</p>
+    </div>
+    <div class="esp-tipos" style="margin-top: 2.5rem">
+      <p class="k-rotulo">Display · 600 · −3.5%</p>
+      <p style="font-size: var(--k-t-display); font-weight: 600; letter-spacing: var(--k-tracking-display); line-height: .98">Saiu uma norma.</p>
+      <p class="k-rotulo">Título de seção · 600 · −3%</p>
+      <p style="font-size: var(--k-t-h2); font-weight: 600; letter-spacing: -0.03em; line-height: 1.02">Do trecho do DOU à tarefa.</p>
+      <p class="k-rotulo">Apoio · 400 · tinta 2</p>
+      <p style="font-size: var(--k-t-apoio); color: var(--k-tinta-2); max-width: 52ch">A norma que muda a sua obrigação passa no meio de centenas de outras.</p>
+      <p class="k-rotulo">Dado · IBM Plex Mono 500</p>
+      <p class="k-mono" style="font-size: var(--k-t-numero); font-weight: 500; letter-spacing: -0.03em; line-height: 1">1.931 → 110 → <span style="color: var(--k-laranja)">2</span></p>
+      <p class="k-mono" style="color: var(--k-tinta-2)">REN ANEEL 1.174/2026 · art. 166-A · DOU 04/11/2026, p. 68 · CNPJ 00.000.000/0001-91</p>
+    </div>
+  </div>
+</section>
+
+<!-- ── componentes ───────────────────────────────────────────────────── -->
+<section class="esp-secao">
+  <div class="k-moldura">
+    <div class="k-cabecalho k-revelar">
+      <p class="k-rotulo"><b>04</b> · Componentes</p>
+      <h2>Peças para montar qualquer tela.</h2>
+      <p>CSS puro com prefixo k-. Em React com Tailwind, use as mesmas cores pelo tema.</p>
+    </div>
+
+    <p class="k-rotulo" style="margin-top: 2.5rem">Botões</p>
+    <div class="esp-linha">
+      <button class="k-btn">Começar pelo CNPJ <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
+      <button class="k-btn k-btn--grafite">Falar com vendas</button>
+      <button class="k-btn k-btn--claro">Corrigir</button>
+      <button class="k-btn k-btn--contorno">Rejeitar</button>
+      <button class="k-btn k-btn--sm k-btn--grafite">Pequeno</button>
+      <button class="k-btn" disabled>Desabilitado</button>
+    </div>
+
+    <p class="k-rotulo" style="margin-top: 2.5rem">Selos e chips</p>
+    <div class="esp-linha">
+      <span class="k-selo k-selo--aplicavel">Aplicável</span>
+      <span class="k-selo k-selo--incerto">Incerto</span>
+      <span class="k-selo k-selo--descartado">Descartado · transmissão</span>
+      <span class="k-chip">Comercial</span><span class="k-chip">CNAE 3514-0/00</span><span class="k-chip">RJ</span>
+    </div>
+
+    <div class="esp-duas">
+      <div>
+        <p class="k-rotulo">Campo</p>
+        <div class="k-campo k-campo--mono" style="margin-top: 1rem; max-width: 34rem">
+          <label for="cnpj">CNPJ da distribuidora</label>
+          <div class="k-linha-acao">
+            <input id="cnpj" inputmode="numeric" placeholder="00.000.000/0000-00" aria-describedby="cnpj-msg">
+            <button class="k-btn">Começar</button>
+          </div>
+          <p id="cnpj-msg" class="k-campo-msg" aria-live="polite">O perfil vem da Receita Federal e da ANEEL.</p>
+        </div>
+        <div class="k-campo k-campo--mono" style="margin-top: 1rem; max-width: 34rem">
+          <label for="cnpj2">Com erro</label>
+          <input id="cnpj2" value="11.222.333/0001-80" aria-invalid="true" aria-describedby="cnpj2-msg">
+          <p id="cnpj2-msg" class="k-campo-msg" data-erro>Confira o CNPJ: os dígitos verificadores não batem.</p>
+        </div>
+      </div>
+      <div>
+        <p class="k-rotulo">Card da tarefa</p>
+        <article class="k-card k-tarefa" style="margin-top: 1rem; max-width: 26rem">
+          <span class="k-tarefa-ato">REN ANEEL 1.174/2026 · art. 166-A</span>
+          <p class="k-tarefa-titulo">Responder o pedido de migração ao mercado livre</p>
+          <dl class="k-tarefa-dados">
+            <dt>Prazo</dt><dd class="k-prazo">5 dias úteis</dd>
+            <dt>Dono</dt><dd>Comercial</dd>
+          </dl>
+          <blockquote class="k-citacao">“A distribuidora tem o <mark class="k-grifo">prazo de até 5 dias úteis</mark>, contados a partir do recebimento da comunicação da migração…”<cite>DOU 04/11/2026 · p. 68</cite></blockquote>
+          <div class="esp-linha" style="margin-top: 0.25rem">
+            <button class="k-btn k-btn--sm">Aprovar</button><button class="k-btn k-btn--sm k-btn--claro">Corrigir</button>
+          </div>
+        </article>
+      </div>
+    </div>
+
+    <div class="esp-duas">
+      <div>
+        <p class="k-rotulo">Folha do DOU, com cantos</p>
+        <figure class="k-folha k-cantos" style="margin: 1rem 0 0">
+          <span class="k-canto"></span>
+          <figcaption><span class="k-rotulo">DOU · 05/11/2026 · Seção 1 · p. 56</span><p style="margin-top: .5rem; font-weight: 600">Resolução Autorizativa ANEEL nº 16.829/2026</p></figcaption>
+          <blockquote class="k-citacao" style="margin-top: 1rem; border: 0; padding: 0">“(...) em favor da <mark class="k-grifo">Transmissora</mark> Brasrio S.A., (...) no município de São João da Barra, <mark class="k-grifo">estado do Rio de Janeiro</mark>.”</blockquote>
+        </figure>
+      </div>
+      <div>
+        <p class="k-rotulo">Tabela</p>
+        <table class="k-tabela" style="margin-top: 1rem">
+          <thead><tr><th>Ato</th><th>Decisão</th><th>Motivo</th></tr></thead>
+          <tbody>
+            <tr><td class="k-mono">REN 1.174/2026</td><td><span class="k-selo k-selo--aplicavel">Aplicável</span></td><td>Prazo de migração ao ACL</td></tr>
+            <tr><td class="k-mono">REA 16.829/2026</td><td><span class="k-selo k-selo--descartado">Descartado</span></td><td>Transmissão, não distribuição</td></tr>
+            <tr><td class="k-mono">REN 1.175/2026</td><td><span class="k-selo k-selo--aplicavel">Aplicável</span></td><td>Open Energy, 12 meses</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <p class="k-rotulo" style="margin-top: 2.5rem">Painel grafite e números</p>
+    <div class="k-painel" style="margin-top: 1rem">
+      <p class="k-rotulo">03 a 06/11/2026</p>
+      <div class="esp-grade" style="margin-top: 1rem">
+        <div class="k-numero"><span class="k-numero-valor">1.931</span><span class="k-numero-rotulo">atos no DOU</span><span class="k-numero-fonte" style="color: rgb(255 255 255 / .6)">Seção 1</span></div>
+        <div class="k-numero"><span class="k-numero-valor">110</span><span class="k-numero-rotulo">da ANEEL</span><span class="k-numero-fonte" style="color: rgb(255 255 255 / .6)">Energia elétrica</span></div>
+        <div class="k-numero"><span class="k-numero-valor" style="color: var(--k-laranja)">2</span><span class="k-numero-rotulo">criam obrigação</span><span class="k-numero-fonte" style="color: rgb(255 255 255 / .6)">para distribuidoras</span></div>
+      </div>
+    </div>
+
+    <p class="k-rotulo" style="margin-top: 2.5rem">Bloco de chamada</p>
+    <div class="k-bloco-sinal" style="margin-top: 1rem; display: grid; gap: 1.5rem; align-items: end; grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr))">
+      <h2 style="max-width: 16ch">Veja o que vale para a sua distribuidora.</h2>
+      <div class="k-campo k-campo--mono">
+        <label for="cnpj3">CNPJ da distribuidora</label>
+        <div class="k-linha-acao"><input id="cnpj3" placeholder="00.000.000/0000-00" style="border-color: rgb(14 26 36 / .4)"><button class="k-btn k-btn--grafite">Começar</button></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── movimento e texto ─────────────────────────────────────────────── -->
+<section class="esp-secao">
+  <div class="k-moldura">
+    <div class="k-cabecalho k-revelar">
+      <p class="k-rotulo"><b>05</b> · Movimento e texto</p>
+      <h2>Pouco, rápido e com motivo.</h2>
+      <p>Animação explica ou confirma. Nunca decora o que a pessoa usa todo dia.</p>
+    </div>
+    <div class="esp-grade">
+      <div class="k-card"><p class="k-rotulo">Entrada</p><p style="margin-top: .5rem">300 ms, opacidade + 12 px + desfoque 4 px, <span class="k-mono">ease-out</span>. Itens a cada 100 ms.</p></div>
+      <div class="k-card"><p class="k-rotulo">Saída</p><p style="margin-top: .5rem">150 ms. Sempre menor e mais curta que a entrada.</p></div>
+      <div class="k-card"><p class="k-rotulo">Botão</p><p style="margin-top: .5rem">Pressionado: escala 0.96 em 150 ms. Desabilitado não reage.</p></div>
+      <div class="k-card"><p class="k-rotulo">Movimento reduzido</p><p style="margin-top: .5rem">Só opacidade. Cenas longas viram um quadro estático completo.</p></div>
+    </div>
+    <div class="esp-duas">
+      <div class="esp-regra"><b>Voz</b><p>Frases curtas e concretas, como um vendedor experiente do setor elétrico falando com um gerente de regulação. Título até 8 palavras, no máximo 1 frase de apoio. Número sempre com fonte.</p></div>
+      <div class="esp-regra nao"><b>Nunca</b><p>"Revolucione", "potencialize", "solução inovadora", "de ponta", "sem esforço", "o futuro da", "não é apenas X, é Y", listas de três adjetivos, emoji, travessão, exclamação, depoimento ou métrica inventada.</p></div>
+    </div>
+  </div>
+</section>
+
+<footer class="k-moldura" style="padding-block: 2rem 3rem; border-top: 1px solid var(--k-linha); font-size: var(--k-t-legenda); color: var(--k-tinta-3)">
+  Kalman · identidade Laudo · 2026. Exemplos com atos reais do DOU; empresas e unidades são ilustrativas.
+</footer>
+</body>
+</html>
