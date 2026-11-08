@@ -9,12 +9,14 @@ FRONT_DIR := front/cadastro-teste
 FRONT_TARGETS := install env dev build check clean
 
 IA_DIR := ia
-IA_TARGETS := install test clean chatbot-deploy chatbot-eval chatbot-integracao chatbot-package chatbot-contrato chatbot-sync-blocos
+IA_TARGETS := install test clean chatbot-deploy chatbot-eval chatbot-integracao chatbot-package chatbot-contrato chatbot-sync-blocos \
+	propostas-build propostas-deploy propostas-run propostas-verify propostas-classificar propostas-simular propostas-validar propostas-metricas propostas-sync-regras
 
 PIPELINE_DIR := pipeline
 PIPELINE_TARGETS := install test lint deploy clean \
 	cadastro-deploy cadastro-run cadastro-verify dou-deploy dou-run dou-verify \
-	matriz-deploy matriz-run matriz-verify matriz-fixture matriz-proposta-demo matriz-sync-regras
+	matriz-deploy matriz-run matriz-verify matriz-fixture matriz-proposta-demo matriz-sync-regras \
+	cadastro-taxonomia kb-deploy kb-run kb-verify
 
 .PHONY: help test matriz-test matriz-deploy chatbot-deploy $(addprefix api-,$(API_TARGETS)) $(addprefix front-,$(FRONT_TARGETS)) \
 	$(addprefix pipeline-,$(PIPELINE_TARGETS)) $(addprefix ia-,$(IA_TARGETS))
@@ -49,6 +51,12 @@ help:
 	@echo "  make ia-chatbot-eval  avalia o agente com o modelo (precisa de MODEL_ID; ARGS=--dados-reais usa o lake)"
 	@echo "  make ia-chatbot-integracao  cadastro -> lakehouse -> agente (AWS, roda o pipeline)"
 	@echo "  make ia-chatbot-contrato  regera o JSON Schema e os exemplos da resposta do chatbot (para o front)"
+	@echo "  make pipeline-kb-deploy  documentos da Knowledge Base (stack lakehouse-kb)"
+	@echo "  make pipeline-cadastro-taxonomia  envia os tipos de empresa (config/tipos_empresa.json) ao lake"
+	@echo "  make ia-propostas-classificar  classificação das empresas com o Titan, sem gravar na AWS"
+	@echo "  make ia-propostas-simular  propostas do DOU com dados e modelos reais, sem gravar na AWS"
+	@echo "  make ia-propostas-validar  confere no ETL da matriz (local) o que a simulação gerou"
+	@echo "  make ia-propostas-deploy  passo de propostas do DOU (stack matriz-propostas)"
 	@echo "  make test          roda os testes de todas as partes"
 
 $(addprefix api-,$(API_TARGETS)): api-%:
