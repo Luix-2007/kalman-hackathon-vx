@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24">
+  <line id="haste-antena" x1="12" y1="3.5" x2="12" y2="7" stroke="#BFD9EA" stroke-width="1.8" stroke-linecap="round"/>
+  <rect id="rosto" x="3" y="6.5" width="18" height="15" rx="4.5" fill="#0E1A24"/>
+  <rect id="visor" x="5.5" y="9" width="13" height="6.8" rx="2.5" fill="#0E1A24" stroke="#BFD9EA" stroke-width="1.2"/>
+  <rect id="olho-esq" x="8" y="10.8" width="2.2" height="3.2" rx="1.1" fill="#FFFFFF"/>
+  <rect id="olho-dir" x="13.8" y="10.8" width="2.2" height="3.2" rx="1.1" fill="#FFFFFF"/>
+  <path id="boca" d="M 8.5 18.5 L 15.5 18.5" fill="none" stroke="#FFFFFF" stroke-width="1.6" stroke-linecap="round"/>
+  <circle id="detalhe" cx="12" cy="3" r="2.2" fill="#FF5A1F"/>
+</svg>

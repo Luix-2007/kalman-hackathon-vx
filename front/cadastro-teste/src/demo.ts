@@ -6,6 +6,7 @@
  *   http://localhost:5173/painel?demo=dados   já logado como dono, com o CNPJ consultado, 1 membro e 1 convite
  *   http://localhost:5173/painel?demo=membro  já logado como membro (só leitura)
  *   http://localhost:5173/painel?demo=convite já logado, sem empresa, com um convite pendente
+ *   http://localhost:5173/painel?demo=dash    já logado como dono, cadastro concluído: abre o dash (Hoje, IA...)
  *
  * O modo vale para a aba inteira a partir do primeiro carregamento com ?demo (navegar entre rotas não o desliga).
  *
@@ -22,7 +23,7 @@ import light from "./dados/light-opencnpj.json";
 const params = new URLSearchParams(location.search);
 export const demoAtivo = import.meta.env.DEV && params.has("demo");
 const modo = params.get("demo");
-export const demoLogado = demoAtivo && ["vazio", "dados", "membro", "convite"].includes(modo ?? "");
+export const demoLogado = demoAtivo && ["vazio", "dados", "membro", "convite", "dash"].includes(modo ?? "");
 
 export const DEMO_EMAIL = modo === "membro" || modo === "convite" ? "medicao@empresa-exemplo.com.br" : "regulacao@empresa-exemplo.com.br";
 const DONO_EMAIL = "regulacao@empresa-exemplo.com.br";
@@ -40,8 +41,15 @@ const EXEMPLO: Cadastro = {
 
 const daqui = (dias: number) => Math.floor(Date.now() / 1000) + dias * 86400;
 
+const CONFERIDO = { conferido_em: "2026-11-07T21:40:00+00:00", conferido_por: "regulacao@empresa-exemplo.com.br", conferido_por_nome: "Ana Ribeiro", ufs_atuacao: ["RJ"] };
+// ?demo=dash: dono com os dados conferidos e o cadastro concluído → /painel abre o dash (src/dash/)
+if (demoAtivo && modo === "dash") {
+  try { localStorage.setItem(`kalman:cadastro-concluido:${EXEMPLO.cnpj}`, "1"); } catch { /* sem storage */ }
+}
+
 let atual: Cadastro | null =
-  modo === "dados" ? structuredClone(EXEMPLO)
+  modo === "dash" ? { ...structuredClone(EXEMPLO), dados: { ...CONFERIDO } }
+  : modo === "dados" ? structuredClone(EXEMPLO)
   : modo === "membro" ? { ...structuredClone(EXEMPLO), user_id: "demo-membro", papel: "membro", dados: { conferido_em: "2026-11-07T21:40:00+00:00", conferido_por: "regulacao@empresa-exemplo.com.br", conferido_por_nome: "Ana Ribeiro", ufs_atuacao: ["RJ"] } }
   : null;
 

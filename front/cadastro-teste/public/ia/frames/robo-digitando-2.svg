@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" width="40" height="40">
+  <line id="haste-antena" x1="20" y1="5.5" x2="20" y2="11" stroke="#BFD9EA" stroke-width="2.2" stroke-linecap="round"/>
+  <rect id="orelha-esq" x="2" y="18" width="3.5" height="9" rx="1.5" fill="#BFD9EA" style="transform-box: fill-box; transform-origin: center;"/>
+  <rect id="orelha-dir" x="34.5" y="18" width="3.5" height="9" rx="1.5" fill="#BFD9EA" style="transform-box: fill-box; transform-origin: center;"/>
+  <rect id="rosto" x="5" y="10" width="30" height="25" rx="7" fill="#0E1A24"/>
+  <rect id="visor" x="9" y="14" width="22" height="11" rx="4" fill="#0E1A24" stroke="#BFD9EA" stroke-width="1.5"/>
+  <rect id="olho-esq" x="13" y="17.2" width="3.2" height="4.6" rx="1.6" fill="#FFFFFF" style="transform-box: fill-box; transform-origin: center;"/>
+  <rect id="olho-dir" x="23.8" y="17.2" width="3.2" height="4.6" rx="1.6" fill="#FFFFFF" style="transform-box: fill-box; transform-origin: center;"/>
+  <path id="boca" d="M 12.5 30 L 16 29.2 L 18.8 30.8 L 21.2 29.4 L 24 30 L 27.5 30" fill="none" stroke="#FFFFFF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle id="detalhe" cx="20" cy="5" r="3" fill="#FF5A1F" style="transform-box: fill-box; transform-origin: center;"/>
+</svg>

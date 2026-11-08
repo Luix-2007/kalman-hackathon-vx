@@ -1,0 +1,1117 @@
+{
+ "_fonte": "torre-regulatoria/benchmark: semana real do DOU (seção 1, 03 a 06/11/2026) e saída do pipeline do Kalman (triagem Llama 3.3 + decisão Qwen3, prompt v2). Gabarito provisório por IA. Gerado por gerar_semana.py.",
+ "dias": [
+  {
+   "data": "2026-11-03",
+   "atos": 694,
+   "triagem": 102,
+   "obrigacao": 1,
+   "acompanhar": 1
+  },
+  {
+   "data": "2026-11-04",
+   "atos": 515,
+   "triagem": 122,
+   "obrigacao": 7,
+   "acompanhar": 3
+  },
+  {
+   "data": "2026-11-05",
+   "atos": 365,
+   "triagem": 93,
+   "obrigacao": 1,
+   "acompanhar": 0
+  },
+  {
+   "data": "2026-11-06",
+   "atos": 357,
+   "triagem": 73,
+   "obrigacao": 0,
+   "acompanhar": 0
+  }
+ ],
+ "alertas": [
+  {
+   "id": "51995702",
+   "data": "2026-11-03",
+   "orgao": "ANEEL",
+   "tipo": "Retificação",
+   "identifica": "Retificação",
+   "ementa": "",
+   "pagina": "62",
+   "url": "http://pesquisa.in.gov.br/imprensa/jsp/visualiza/index.jsp?data=03/11/2026&jornal=515&pagina=62",
+   "decisao": "obrigacao",
+   "destinatario": "Agência Nacional de Energia Elétrica (ANEEL)",
+   "o_que_determina": "Retificar a Tabela 6 do anexo do Despacho nº 3.763/2026, alterando os fatores de cálculo do Encargo de Responsabilidade da Distribuidora (ERD) para novos subgrupos tarifários e ajustando valores existentes.",
+   "motivo": "A retificação altera fatores de cálculo do ERD previstos no art. 109 da REN 1.000/2021, que são aplicáveis a todas as distribuidoras, incluindo a Light, para cálculo de encargos tarifários relacionados à geração distribuída, impactando…",
+   "trecho": "Leia-se: TABELA 6 - FATOR DE CÁLCULO DO ENCARGO DE RESPONSABILIDADE DA DISTRIBUIDORA (art. 109 da REN nº 1.000/2021) (Ceraça). SUBGRUPO TARIFÁRIO BT1 BT2 B1 B2 B3 B4a B4b A4 FATOR DE CÁLCULO DO ERD (K) 150,48 150,48 150,48 82,81 90,37 1.087,10 FATOR DE CÁLCULO DO ERD PARA GERAÇÃO (Kg) 507,28…",
+   "prazo": null,
+   "unidade": "Regulação",
+   "altera_norma": "REN 1.000/2021, art. 109",
+   "confianca": 0.95
+  },
+  {
+   "id": "51995714",
+   "data": "2026-11-03",
+   "orgao": "ANEEL",
+   "tipo": "Despacho",
+   "identifica": "DESPACHO Nº 4.122, DE 27 DE OUTUBRO DE 2026",
+   "ementa": "",
+   "pagina": "63",
+   "url": "http://pesquisa.in.gov.br/imprensa/jsp/visualiza/index.jsp?data=03/11/2026&jornal=515&pagina=63",
+   "decisao": "acompanhar",
+   "destinatario": "distribuidoras de energia elétrica",
+   "o_que_determina": "homologar os valores dos custos diretos do ramal de conexão, kit de instalação interna e do padrão de entrada instalados pelas distribuidoras e os recursos da CDE a serem repassados às distribuidoras pela CCEE,…",
+   "motivo": "O despacho homologa valores a serem repassados à distribuidora pela CCEE, o que não cria dever para a empresa, mas é informação relevante para a área financeira monitorar os repasses da CDE.",
+   "trecho": "homologar os valores dos custos diretos do ramal de conexão, kit de instalação interna e do padrão de entrada instalados pelas distribuidoras e os recursos da Conta de Desenvolvimento Energético - CDE a serem repassados às distribuidoras pela Câmara de Comercialização de Energia Elétrica - CCEE,…",
+   "prazo": null,
+   "unidade": "Financeiro",
+   "altera_norma": null,
+   "confianca": 0.95
+  },
+  {
+   "id": "52019671",
+   "data": "2026-11-04",
+   "orgao": "ANEEL",
+   "tipo": "Resolução",
+   "identifica": "RESOLUÇÃO NORMATIVA Nº 1.175, DE 27 DE OUTUBRO DE 2026",
+   "ementa": "Dispõe sobre a implementação do Open Energy.",
+   "pagina": "91",
+   "url": "http://pesquisa.in.gov.br/imprensa/jsp/visualiza/index.jsp?data=04/11/2026&jornal=515&pagina=91",
+   "decisao": "obrigacao",
+   "destinatario": "Câmara de Comercialização de Energia Elétrica - CCEE, agentes de comercialização varejista e agentes titulares de…",
+   "o_que_determina": "As distribuidoras de energia elétrica devem disponibilizar interface padronizada para acesso do consumidor aos próprios dados cadastrais e de faturamento, e implementar sistema de consentimento e compartilhamento de…",
+   "motivo": "A Light SESA é agente titular de concessão federal para prestação do serviço público de distribuição de energia elétrica, conforme art. 5º, inciso III, e, portanto, está obrigada a implementar o Open Energy, incluindo a disponibilização…",
+   "trecho": "III - agente titular de concessão ou permissão federal para prestar o serviço público de distribuição de energia elétrica.",
+   "prazo": "até 12 meses da publicação",
+   "unidade": "Medição",
+   "altera_norma": "PRODIST - Módulo 10 (Gestão de Dados e Informações) e PRODIST - Módulo 12 (Acesso e Compartilhamento de Dados)",
+   "confianca": 1.0
+  },
+  {
+   "id": "52021303",
+   "data": "2026-11-04",
+   "orgao": "ANEEL",
+   "tipo": "Despacho",
+   "identifica": "DESPACHO Nº 4.190, DE 30 DE OUTUBRO DE 2026",
+   "ementa": "",
+   "pagina": "95",
+   "url": "http://pesquisa.in.gov.br/imprensa/jsp/visualiza/index.jsp?data=04/11/2026&jornal=515&pagina=95",
+   "decisao": "obrigacao",
+   "destinatario": "Concessionárias e Permissionárias de Distribuição de Energia Elétrica e Consumidores do Sistema Interligado Nacional",
+   "o_que_determina": "Estabelecer os valores da Conta Centralizadora dos Recursos de Bandeiras Tarifárias para liquidação junto à CCEE, referente ao mês de setembro de 2026",
+   "motivo": "A Light, como concessionária de distribuição no SIN, é obrigada a aplicar os valores da Conta Bandeiras na fatura dos consumidores, conforme seu papel no Proret e na operação do mercado de curto prazo, sendo este despacho um parâmetro…",
+   "trecho": "Estabelecer os valores da Conta Centralizadora dos Recursos de Bandeiras Tarifárias (Conta Bandeiras) para fins da liquidação junto à Câmara de Comercialização de Energia Elétrica - CCEE, nas contas correntes vinculadas às operações do mercado de curto prazo, referente à contabilização do mês de…",
+   "prazo": null,
+   "unidade": "Medição",
+   "altera_norma": "Submódulo 6.8 dos Procedimentos de Regulação Tarifária - Proret, aprovado pela Resolução Normativa nº 1.084, de 5 de março de 2024",
+   "confianca": 1.0
+  },
+  {
+   "id": "52021318",
+   "data": "2026-11-04",
+   "orgao": "ANEEL",
+   "tipo": "Despacho",
+   "identifica": "DESPACHO Nº 4.158, DE 29 DE OUTUBRO DE 2026",
+   "ementa": "",
+   "pagina": "94",
+   "url": "http://pesquisa.in.gov.br/imprensa/jsp/visualiza/index.jsp?data=04/11/2026&jornal=515&pagina=94",
+   "decisao": "obrigacao",
+   "destinatario": "Agentes do setor elétrico interligados ao SIN",
+   "o_que_determina": "Fixar a bandeira tarifária verde para o mês de novembro de 2026 para consumidores interligados ao SIN",
+   "motivo": "A Light, como distribuidora interligada ao SIN, é obrigada a aplicar a bandeira tarifária definida pela ANEEL nas faturas de seus consumidores, conforme dever implícito do setor elétrico.",
+   "trecho": "Fixar, para os consumidores interligados ao SIN, a bandeira tarifária verde com vigência no mês de novembro de 2026.",
+   "prazo": "novembro de 2026",
+   "unidade": "Medição",
+   "altera_norma": null,
+   "confianca": 1.0
+  },
+  {
+   "id": "52023399",
+   "data": "2026-11-04",
+   "orgao": "ANEEL",
+   "tipo": "Despacho",
+   "identifica": "DESPACHO Nº 4.193, DE 31 DE OUTUBRO DE 2026",
+   "ementa": "",
+   "pagina": "95",
+   "url": "http://pesquisa.in.gov.br/imprensa/jsp/visualiza/index.jsp?data=04/11/2026&jornal=515&pagina=95",
+   "decisao": "obrigacao",
+   "destinatario": "agentes de distribuição de energia elétrica com atualização tarifária no mês de outubro de 2026",
+   "o_que_determina": "fixa a Taxa de Fiscalização de Serviços de Energia Elétrica - TFSEE aos interessados",
+   "motivo": "A Light SESA é concessionária de distribuição e tem aniversário tarifário em 15 de março, mas o despacho se dirige a agentes com atualização tarifária em outubro de 2026 — como a empresa não está nesse grupo, não é diretamente atingida.…",
+   "trecho": "fixa a Taxa de Fiscalização de Serviços de Energia Elétrica - TFSEE aos interessados",
+   "prazo": null,
+   "unidade": "Financeiro",
+   "altera_norma": "REN 1.000/2020, art. 117",
+   "confianca": 1.0
+  },
+  {
+   "id": "52024096",
+   "data": "2026-11-04",
+   "orgao": "ANEEL",
+   "tipo": "Resolução",
+   "identifica": "RESOLUÇÃO NORMATIVA Nº 1.174, DE 27 DE OUTUBRO DE 2026",
+   "ementa": "Aprimora a regulação dos serviços de distribuição em função da abertura de mercado para consumidores do Grupo A, e dá outras providências.",
+   "pagina": "68",
+   "url": "http://pesquisa.in.gov.br/imprensa/jsp/visualiza/index.jsp?data=04/11/2026&jornal=515&pagina=68",
+   "decisao": "obrigacao",
+   "destinatario": "Distribuidoras de energia elétrica",
+   "o_que_determina": "A distribuidora deve cumprir prazos e procedimentos para migração de consumidores do Grupo A ao Ambiente de Contratação Livre (ACL), incluindo verificação técnica em até 5 dias úteis, não exigir adaptações de…",
+   "motivo": "A Resolução Normativa nº 1.174/2026 altera expressamente obrigações das distribuidoras de energia elétrica, e a LIGHT, como concessionária de distribuição no Rio de Janeiro, atende consumidores do Grupo A e está diretamente sujeita às…",
+   "trecho": "A distribuidora tem o prazo de até 5 dias úteis, contados a partir do recebimento da comunicação da migração prevista no art. 166, para verificar os requisitos técnicos e a existência de motivos que impeçam a migração e: I - reprovar a migração, informando as respectivas justificativas... ou II -…",
+   "prazo": "5 dias úteis",
+   "unidade": "Medição",
+   "altera_norma": "Resolução Normativa nº 1.000/2021, arts. 42, 90, 96-A, 138, 140, 142, 159, 160, 163, 166, 166-A, 167, 167-A, 167-B, 167-C, 168, 175-A, 294, 325, 342-A, 396, 476, 627-A, 629, 655-D, 655-M, 655-Y",
+   "confianca": 1.0
+  },
+  {
+   "id": "52024099",
+   "data": "2026-11-04",
+   "orgao": "ANEEL",
+   "tipo": "Resolução",
+   "identifica": "Registro sem título (continuação de ato anterior)",
+   "ementa": "",
+   "pagina": "71",
+   "url": "http://pesquisa.in.gov.br/imprensa/jsp/visualiza/index.jsp?data=04/11/2026&jornal=515&pagina=71",
+   "decisao": "obrigacao",
+   "destinatario": "distribuidoras e comercializadoras de energia elétrica, inclusive agentes que atuem no varejo, e seus grupos econômicos",
+   "o_que_determina": "A distribuidora deve identificar de forma nítida e inequívoca seu segmento de atuação com a inclusão visível do termo relativo à atividade de distribuição em todas as comunicações, e está vedada qualquer conduta que…",
+   "motivo": "A Light SESA, como distribuidora de energia elétrica no Rio de Janeiro, está diretamente atingida pelas novas regras que proíbem práticas de favorecimento a comercializadoras do mesmo grupo econômico e exigem clareza na identificação de…",
+   "trecho": "Art. 172-B. No exercício da opção de adquirir energia elétrica com outro fornecedor pelo consumidor e demais usuários, ficam vedadas à distribuidora as seguintes condutas: I - promover serviços ou pacotes comerciais (co-branding) de comercializadora, inclusive outro agente que atue no varejo, do…",
+   "prazo": "em até 180 (cento e oitenta) dias da data de sua publicação",
+   "unidade": "Comercial",
+   "altera_norma": "Resolução Normativa nº 1.000, de 7 de dezembro de 2021, arts. 172-B e 172-C",
+   "confianca": 1.0
+  },
+  {
+   "id": "52012519",
+   "data": "2026-11-04",
+   "orgao": "STF",
+   "tipo": "Ação Direta de Inconstitucionalidade e Ação Declaratória de Constitucionalidade",
+   "identifica": "Decisões",
+   "ementa": "",
+   "pagina": "1",
+   "url": "http://pesquisa.in.gov.br/imprensa/jsp/visualiza/index.jsp?data=04/11/2026&jornal=515&pagina=1",
+   "decisao": "obrigacao",
+   "destinatario": "Associação Brasileira das Distribuidoras de Energia Elétrica - Abradee e demais distribuidoras de energia elétrica",
+   "o_que_determina": "Que a destinação dos valores de indébitos tributários restituídos às distribuidoras observe prazo de 10 anos, contados da data da efetiva restituição ou da homologação definitiva da compensação.",
+   "motivo": "O Supremo Tribunal Federal decidiu por maioria que as distribuidoras de energia elétrica devem observar prazo de 10 anos para destinação de valores de indébitos tributários restituídos, o que impõe dever legal à Light, como distribuidora…",
+   "trecho": "acolheu parcialmente os embargos da Associação Brasileira de Distribuidoras de Energia Elétrica (ABRADEE), para definir que a destinação dos valores de indébitos tributários restituídos observe o prazo de 10 anos, contados da data da efetiva restituição do indébito às distribuidoras ou da…",
+   "prazo": "10 anos, contados da data da efetiva restituição do indébito às distribuidoras ou da homologação definitiva da compensação por elas realizada",
+   "unidade": "Financeiro",
+   "altera_norma": null,
+   "confianca": 0.95
+  },
+  {
+   "id": "52012982",
+   "data": "2026-11-04",
+   "orgao": "ANEEL",
+   "tipo": "Despacho",
+   "identifica": "DESPACHO Nº 4.184, DE 29 DE OUTUBRO DE 2026",
+   "ementa": "",
+   "pagina": "95",
+   "url": "http://pesquisa.in.gov.br/imprensa/jsp/visualiza/index.jsp?data=04/11/2026&jornal=515&pagina=95",
+   "decisao": "acompanhar",
+   "destinatario": "distribuidoras de energia elétrica",
+   "o_que_determina": "homologar a Diferença Mensal de Receita (DMR) da Tarifa Social e os recursos da CDE a serem repassados às distribuidoras pela CCEE",
+   "motivo": "O despacho homologa valores a serem repassados às distribuidoras, mas não impõe à Light ação de execução, apenas informa o montante que ela receberá, o que é de interesse da área de Regulação e Financeiro para conferência e recebimento.",
+   "trecho": "homologar a Diferença Mensal de Receita - DMR apurada na aplicação da Tarifa Social de Energia Elétrica e os recursos da Conta de Desenvolvimento Energético a serem repassados às distribuidoras pela Câmara de Comercialização de Energia Elétrica - CCEE",
+   "prazo": null,
+   "unidade": "Financeiro",
+   "altera_norma": null,
+   "confianca": 0.95
+  },
+  {
+   "id": "52014677",
+   "data": "2026-11-04",
+   "orgao": "MME",
+   "tipo": "Portaria",
+   "identifica": "Portaria SNTEP/MME Nº 3.257, DE 28 DE outubro DE 2026",
+   "ementa": "",
+   "pagina": "67",
+   "url": "http://pesquisa.in.gov.br/imprensa/jsp/visualiza/index.jsp?data=04/11/2026&jornal=515&pagina=67",
+   "decisao": "acompanhar",
+   "destinatario": "agentes setoriais e demais interessados",
+   "o_que_determina": "Divulgar para consulta pública minutas de portarias sobre cálculo e revisão da garantia física de energia de usinas eólicas e solares fotovoltaicas, com prazo de 45 dias para contribuições.",
+   "motivo": "A portaria trata de consulta pública sobre metodologias de cálculo da garantia física de energia para usinas geradoras, não criando dever direto à distribuidora, mas sendo relevante para a área de regulação por impactar a dinâmica de…",
+   "trecho": "Divulgar, para Consulta Pública, as Minutas de Portaria que tratam das metodologias e dos procedimentos de Cálculo e Revisão da Garantia Física de Energia de Usinas Eólicas e Usinas Solares Fotovoltaicas juntamente com a Análise de Impacto Regulatório das propostas.",
+   "prazo": "45 (quarenta e cinco) dias, contados a partir da data de publicação desta Portaria",
+   "unidade": "Regulação",
+   "altera_norma": null,
+   "confianca": 0.9
+  },
+  {
+   "id": "52015421",
+   "data": "2026-11-04",
+   "orgao": "Fazenda",
+   "tipo": "Pauta",
+   "identifica": "Pauta De Julgamento",
+   "ementa": "",
+   "pagina": "48",
+   "url": "http://pesquisa.in.gov.br/imprensa/jsp/visualiza/index.jsp?data=04/11/2026&jornal=515&pagina=48",
+   "decisao": "acompanhar",
+   "destinatario": "Recorrentes e interessados nos processos listados",
+   "o_que_determina": "A pauta informa que haverá julgamento de processos tributários envolvendo a Energisa Borboarema - Distribuidora de Energia S.A., sem impor qualquer dever à Light.",
+   "motivo": "A empresa Light não é parte nos processos listados, mas o julgamento de um processo envolvendo outra distribuidora (Energisa Borboarema) pode estabelecer precedente interpretativo sobre tratamento tributário de encargos setoriais, que…",
+   "trecho": "11 - Processo nº: 10425.900794/2018-11 - Recorrente: ENERGISA BORBOREMA - DISTRIBUIDORA DE ENERGIA S.A e Interessado: FAZENDA NACIONAL",
+   "prazo": null,
+   "unidade": "Regulação",
+   "altera_norma": null,
+   "confianca": 0.9
+  },
+  {
+   "id": "52044426",
+   "data": "2026-11-05",
+   "orgao": "ANEEL",
+   "tipo": "Despacho",
+   "identifica": "DESPACHO Nº 4.086, DE 23 DE OUTUBRO DE 2026",
+   "ementa": "",
+   "pagina": "57",
+   "url": "http://pesquisa.in.gov.br/imprensa/jsp/visualiza/index.jsp?data=05/11/2026&jornal=515&pagina=57",
+   "decisao": "obrigacao",
+   "destinatario": "Concessionárias do Serviço Público de Distribuição de Energia Elétrica",
+   "o_que_determina": "retificar o DESPACHO Nº 3793/2026 para atualizar o parâmetro Ili ref da Seção 3.2.1 do Submódulo 2.2 do PRORET e os Anexos I a V, com vigência a partir de 1º de janeiro de 2027",
+   "motivo": "A empresa é concessionária de distribuição de energia elétrica no Rio de Janeiro e, como tal, está sujeita às regras do PRORET, que regulam o cálculo tarifário. A alteração do parâmetro Ili ref impacta diretamente o cálculo da receita…",
+   "trecho": "retificar o DESPACHO Nº 3793 , DE 29 DE SETEMBRO DE 2026, de modo a atualizar o parâmetro Ili ref da Seção 3.2.1 do Submódulo 2.2 dos Procedimentos de Regulação Tarifária - PRORET, para 86,22% e os Anexos I a V, do Submódulo 2.2 dos Procedimentos de Regulação Tarifária - PRORET, conforme os Anexos…",
+   "prazo": "1º de janeiro de 2027",
+   "unidade": "Regulação",
+   "altera_norma": "PRORET, Submódulo 2.2, Seção 3.2.1 e Anexos I a V",
+   "confianca": 0.95
+  }
+ ],
+ "descartes": {
+  "total": 1918,
+  "categorias": [
+   [
+    "Outro assunto (triagem)",
+    1541
+   ],
+   [
+    "Outro setor",
+    233
+   ],
+   [
+    "Sem efeito para a empresa",
+    67
+   ],
+   [
+    "Usina ou geração de outro agente",
+    51
+   ],
+   [
+    "Outra distribuidora",
+    11
+   ],
+   [
+    "Transmissão",
+    10
+   ],
+   [
+    "Comercialização ou mercado",
+    5
+   ]
+  ],
+  "amostra": [
+   {
+    "id": "51981583",
+    "data": "2026-11-03",
+    "orgao": "Gerência Regional nos Estados do Amazona",
+    "identifica": "ATO Nº 13.549, DE 28 DE OUTUBRO DE 2026",
+    "categoria": "Outro assunto (triagem)",
+    "motivo": "Triagem: Telecomunicações"
+   },
+   {
+    "id": "51981598",
+    "data": "2026-11-03",
+    "orgao": "Secretaria Nacional de Proteção e Defesa",
+    "identifica": "PORTARIA Nº 3.717, DE 26 DE OUTUBRO DE 2026",
+    "categoria": "Outro setor",
+    "motivo": "O ato destina-se exclusivamente a um município do Amazonas para ações de defesa civil, sem qualquer vínculo com a operação, regulamentação ou encargos da Light como distribuidora de energia elétrica…"
+   },
+   {
+    "id": "51981730",
+    "data": "2026-11-03",
+    "orgao": "MME",
+    "identifica": "Despacho",
+    "categoria": "Outro assunto (triagem)",
+    "motivo": "Triagem: Mineração"
+   },
+   {
+    "id": "51981754",
+    "data": "2026-11-03",
+    "orgao": "Secretaria de Atenção Especializada à Sa",
+    "identifica": "Portaria SAES/MS Nº 4.998, DE 23 DE setembro DE 2026",
+    "categoria": "Outro assunto (triagem)",
+    "motivo": "Triagem: Saúde"
+   },
+   {
+    "id": "51981769",
+    "data": "2026-11-03",
+    "orgao": "Secretaria Nacional de Proteção e Defesa",
+    "identifica": "PORTARIA Nº 3.713, DE 26 DE OUTUBRO DE 2026",
+    "categoria": "Outro setor",
+    "motivo": "O ato destina-se exclusivamente ao município de Parintins/AM, localizado no Amazonas, e trata de transferência de recursos para ações de defesa civil, sem qualquer vínculo com as atividades de…"
+   },
+   {
+    "id": "51981802",
+    "data": "2026-11-03",
+    "orgao": "MME",
+    "identifica": "DESPACHO SDL-ANP Nº 1.648, DE 29 DE OUTUBRO DE 2026",
+    "categoria": "Outro assunto (triagem)",
+    "motivo": "Triagem: Assunto relacionado a comércio exterior de combustíveis, não energia elétrica"
+   },
+   {
+    "id": "51981820",
+    "data": "2026-11-03",
+    "orgao": "MME",
+    "identifica": "Despacho",
+    "categoria": "Outro assunto (triagem)",
+    "motivo": "Triagem: Assunto relacionado à mineração, não energia elétrica"
+   },
+   {
+    "id": "51981826",
+    "data": "2026-11-03",
+    "orgao": "MME",
+    "identifica": "Despacho",
+    "categoria": "Outro assunto (triagem)",
+    "motivo": "Triagem: Assunto relacionado à mineração, não energia elétrica"
+   },
+   {
+    "id": "51981829",
+    "data": "2026-11-03",
+    "orgao": "MME",
+    "identifica": "Despacho",
+    "categoria": "Outro assunto (triagem)",
+    "motivo": "Triagem: mineração"
+   },
+   {
+    "id": "51981841",
+    "data": "2026-11-03",
+    "orgao": "MME",
+    "identifica": "Despacho",
+    "categoria": "Outro assunto (triagem)",
+    "motivo": "Triagem: mineração"
+   },
+   {
+    "id": "51981847",
+    "data": "2026-11-03",
+    "orgao": "MME",
+    "identifica": "Despacho",
+    "categoria": "Outro assunto (triagem)",
+    "motivo": "Triagem: mineração"
+   },
+   {
+    "id": "51981904",
+    "data": "2026-11-03",
+    "orgao": "Conselho Regional de Medicina Veterinári",
+    "identifica": "RESOLUÇÃO CRMV-PR Nº 42, de 30 de setembro de 2026",
+    "categoria": "Outro assunto (triagem)",
+    "motivo": "Triagem: Conselho Regional de Medicina Veterinária"
+   },
+   {
+    "id": "51981916",
+    "data": "2026-11-03",
+    "orgao": "MME",
+    "identifica": "Despacho",
+    "categoria": "Sem efeito para a empresa",
+    "motivo": "O despacho se dirige a empresas de extração de areia e transportes rodoviários, que não têm relação com a atividade de distribuição de energia elétrica da Light SESA."
+   },
+   {
+    "id": "51981979",
+    "data": "2026-11-03",
+    "orgao": "MME",
+    "identifica": "DESPACHO SDL-ANP Nº 1.649, DE 29 DE OUTUBRO DE 2026",
+    "categoria": "Outro assunto (triagem)",
+    "motivo": "Triagem: Petróleo e Gás"
+   },
+   {
+    "id": "51982135",
+    "data": "2026-11-03",
+    "orgao": "MME",
+    "identifica": "Despacho",
+    "categoria": "Outro assunto (triagem)",
+    "motivo": "Triagem: mineração"
+   },
+   {
+    "id": "51982240",
+    "data": "2026-11-03",
+    "orgao": "MME",
+    "identifica": "Despacho",
+    "categoria": "Sem efeito para a empresa",
+    "motivo": "O ato trata da outorga de alvarás de pesquisa mineral por órgão de mineração, e a Light é concessionária de distribuição de energia elétrica, sem atividade de mineração ou relação direta com a ANM."
+   },
+   {
+    "id": "51982252",
+    "data": "2026-11-03",
+    "orgao": "MME",
+    "identifica": "Despacho",
+    "categoria": "Outro assunto (triagem)",
+    "motivo": "Triagem: mineração"
+   },
+   {
+    "id": "51987130",
+    "data": "2026-11-03",
+    "orgao": "Secretaria de Atenção Especializada à Sa",
+    "identifica": "Registro sem título (continuação de ato anterior)",
+    "categoria": "Outro assunto (triagem)",
+    "motivo": "Triagem: saúde"
+   },
+   {
+    "id": "51991193",
+    "data": "2026-11-03",
+    "orgao": "Gabinete do Ministro",
+    "identifica": "PORTARIA GM/MS Nº 12.423, DE 29 DE OUTUBRO DE 2026",
+    "categoria": "Outro assunto (triagem)",
+    "motivo": "Triagem: Saúde"
+   },
+   {
+    "id": "51992353",
+    "data": "2026-11-03",
+    "orgao": "Gabinete do Ministro",
+    "identifica": "PORTARIA GM/MS Nº 12.354, DE 29 DE OUTUBRO DE 2026",
+    "categoria": "Outro assunto (triagem)",
+    "motivo": "Triagem: Saúde"
+   },
+   {
+    "id": "51993617",
+    "data": "2026-11-03",
+    "orgao": "Gabinete do Ministro",
+    "identifica": "Registro sem título (continuação de ato anterior)",
+    "categoria": "Outro assunto (triagem)",
+    "motivo": "Triagem: Saúde"
+   },
+   {
+    "id": "51994187",
+    "data": "2026-11-03",
+    "orgao": "MME",
+    "identifica": "Alvará nº 8.128, de 28 de OUTUBRO de 2026",
+    "categoria": "Outro assunto (triagem)",
+    "motivo": "Triagem: Ato relacionado a mineração"
+   },
+   {
+    "id": "51994337",
+    "data": "2026-11-03",
+    "orgao": "ANEEL",
+    "identifica": "DESPACHO Nº 4.114, DE 27 DE OUTUBRO DE 2026",
+    "categoria": "Usina ou geração de outro agente",
+    "motivo": "O despacho se dirige exclusivamente a uma usina geradora (Usina Alto Alegre S.A.), e não a concessionárias de distribuição como a LIGHT SESA, que não tem qualquer dever ou alteração em suas…"
+   },
+   {
+    "id": "51994595",
+    "data": "2026-11-03",
+    "orgao": "Gabinete do Ministro",
+    "identifica": "Registro sem título (continuação de ato anterior)",
+    "categoria": "Outro assunto (triagem)",
+    "motivo": "Triagem: saúde"
+   },
+   {
+    "id": "51994634",
+    "data": "2026-11-03",
+    "orgao": "Agência Nacional de Transportes Aquaviár",
+    "identifica": "ACÓRDÃO Nº 647/2026-ANTAQ",
+    "categoria": "Outro assunto (triagem)",
+    "motivo": "Triagem: Transporte aquaviário"
+   },
+   {
+    "id": "51995537",
+    "data": "2026-11-03",
+    "orgao": "MME",
+    "identifica": "DESPACHO STM-ANP Nº 1.665, DE 29 DE OUTUBRO DE 2026",
+    "categoria": "Outro assunto (triagem)",
+    "motivo": "Triagem: petróleo e gás natural"
+   },
+   {
+    "id": "51995693",
+    "data": "2026-11-03",
+    "orgao": "ANEEL",
+    "identifica": "DESPACHO Nº 4.112, DE 26 DE OUTUBRO DE 2026",
+    "categoria": "Sem efeito para a empresa",
+    "motivo": "O despacho é dirigido exclusivamente à CGTF, entidade diferente da Light, e trata de um projeto específico de gestão, sem qualquer implicação para concessionárias de distribuição de energia elétrica."
+   },
+   {
+    "id": "51996822",
+    "data": "2026-11-03",
+    "orgao": "Gerência-Geral de Inspeção e Fiscalizaçã",
+    "identifica": "RESOLUÇÃO-RE nº 4.296, DE 29 DE OUTUBRO DE 2026",
+    "categoria": "Outro assunto (triagem)",
+    "motivo": "Triagem: Saúde"
+   },
+   {
+    "id": "51997134",
+    "data": "2026-11-03",
+    "orgao": "Gabinete do Ministro",
+    "identifica": "Registro sem título (continuação de ato anterior)",
+    "categoria": "Outro assunto (triagem)",
+    "motivo": "Triagem: Saúde"
+   },
+   {
+    "id": "51997161",
+    "data": "2026-11-03",
+    "orgao": "Gabinete do Ministro",
+    "identifica": "Despacho GM/MS Nº 104, DE 29 DE outubro DE 2026",
+    "categoria": "Outro assunto (triagem)",
+    "motivo": "Triagem: Não relacionado à energia"
+   },
+   {
+    "id": "51997326",
+    "data": "2026-11-03",
+    "orgao": "Gabinete do Ministro",
+    "identifica": "Registro sem título (continuação de ato anterior)",
+    "categoria": "Outro assunto (triagem)",
+    "motivo": "Triagem: apenas dados de saúde"
+   },
+   {
+    "id": "51997338",
+    "data": "2026-11-03",
+    "orgao": "Gabinete do Ministro",
+    "identifica": "Registro sem título (continuação de ato anterior)",
+    "categoria": "Outro assunto (triagem)",
+    "motivo": "Triagem: Saúde"
+   },
+   {
+    "id": "52018936",
+    "data": "2026-11-03",
+    "orgao": "MME",
+    "identifica": "PORTARIA MME Nº 945, DE 3 DE NOVEMBRO DE 2026",
+    "categoria": "Sem efeito para a empresa",
+    "motivo": "A portaria altera apenas uma norma interna do Ministério de Minas e Energia sobre recebimento de contribuições para uma proposta não relacionada à distribuição de energia elétrica, e não se dirige a…"
+   },
+   {
+    "id": "52009366",
+    "data": "2026-11-04",
+    "orgao": "MME",
+    "identifica": "Despacho",
+    "categoria": "Outro assunto (triagem)",
+    "motivo": "Triagem: mineração"
+   },
+   {
+    "id": "52009396",
+    "data": "2026-11-04",
+    "orgao": "MME",
+    "identifica": "Despacho",
+    "categoria": "Outro assunto (triagem)",
+    "motivo": "Triagem: mineração"
+   },
+   {
+    "id": "52009429",
+    "data": "2026-11-04",
+    "orgao": "MME",
+    "identifica": "Despacho",
+    "categoria": "Outro assunto (triagem)",
+    "motivo": "Triagem: despacho da Agência Nacional de Mineração sobre mineração"
+   },
+   {
+    "id": "52009483",
+    "data": "2026-11-04",
+    "orgao": "Fazenda",
+    "identifica": "Pauta De Julgamento",
+    "categoria": "Outro assunto (triagem)",
+    "motivo": "Triagem: pauta de julgamento da Receita Federal"
+   },
+   {
+    "id": "52009495",
+    "data": "2026-11-04",
+    "orgao": "MME",
+    "identifica": "Despacho",
+    "categoria": "Outro assunto (triagem)",
+    "motivo": "Triagem: mineração"
+   },
+   {
+    "id": "52009516",
+    "data": "2026-11-04",
+    "orgao": "MME",
+    "identifica": "Despacho",
+    "categoria": "Outro assunto (triagem)",
+    "motivo": "Triagem: mineração"
+   },
+   {
+    "id": "52013177",
+    "data": "2026-11-04",
+    "orgao": "MME",
+    "identifica": "Alvará nº 8.156, de 29 de OUTUBRO de 2026",
+    "categoria": "Outro assunto (triagem)",
+    "motivo": "Triagem: Alvará de Pesquisa da Agência Nacional de Mineração"
+   },
+   {
+    "id": "52013689",
+    "data": "2026-11-04",
+    "orgao": "Secretaria de Proteção ao Trabalhador",
+    "identifica": "Despacho De 29 De Outubro De 2026",
+    "categoria": "Outro assunto (triagem)",
+    "motivo": "Triagem: trabalho"
+   },
+   {
+    "id": "52013978",
+    "data": "2026-11-04",
+    "orgao": "Secretaria de Atenção Especializada à Sa",
+    "identifica": "Portaria SAES/MS Nº 5.256, DE 27 DE outubro DE 2026",
+    "categoria": "Outro assunto (triagem)",
+    "motivo": "Triagem: Saúde"
+   },
+   {
+    "id": "52014137",
+    "data": "2026-11-04",
+    "orgao": "Superintendência de Infraestrutura Rodov",
+    "identifica": "DECISÃO SUROD Nº 1.793, DE 23 DE OUTUBRO DE 2026",
+    "categoria": "Outro setor",
+    "motivo": "A decisão se dirige exclusivamente à CEMIG Distribuição S.A. e à concessionária rodoviária Way-153, ambas distintas da Light, que é distribuidora no Rio de Janeiro e não tem relação com a BR-262/MG…"
+   },
+   {
+    "id": "52014227",
+    "data": "2026-11-04",
+    "orgao": "MME",
+    "identifica": "Alvará nº 8.161, de 29 de OUTUBRO de 2026",
+    "categoria": "Outro assunto (triagem)",
+    "motivo": "Triagem: mineração"
+   },
+   {
+    "id": "52015133",
+    "data": "2026-11-04",
+    "orgao": "MME",
+    "identifica": "Alvará nº 8.207, de 30 de OUTUBRO de 2026",
+    "categoria": "Outro assunto (triagem)",
+    "motivo": "Triagem: mineração"
+   },
+   {
+    "id": "52015136",
+    "data": "2026-11-04",
+    "orgao": "MME",
+    "identifica": "Alvará nº 8.208, de 30 de OUTUBRO de 2026",
+    "categoria": "Outro assunto (triagem)",
+    "motivo": "Triagem: mineração"
+   },
+   {
+    "id": "52016702",
+    "data": "2026-11-04",
+    "orgao": "MME",
+    "identifica": "Alvará nº 8.214, de 31 de OUTUBRO de 2026",
+    "categoria": "Outro assunto (triagem)",
+    "motivo": "Triagem: mineração"
+   },
+   {
+    "id": "52017778",
+    "data": "2026-11-04",
+    "orgao": "Secretaria Nacional de Trânsito",
+    "identifica": "PORTARIA SENATRAN Nº 923, DE 27 DE outubro DE 2026",
+    "categoria": "Outro assunto (triagem)",
+    "motivo": "Triagem: Trânsito"
+   },
+   {
+    "id": "52018000",
+    "data": "2026-11-04",
+    "orgao": "Secretaria Nacional de Registro, Monitor",
+    "identifica": "PORTARIA SERMOP/MPA Nº 821, DE 3 DE NOVEMBRO DE 2026",
+    "categoria": "Outro assunto (triagem)",
+    "motivo": "Triagem: pesca e aquicultura"
+   },
+   {
+    "id": "52020364",
+    "data": "2026-11-04",
+    "orgao": "MME",
+    "identifica": "Alvará nº 8.225, de 31 de OUTUBRO de 2026",
+    "categoria": "Sem efeito para a empresa",
+    "motivo": "O ato destina-se a uma empresa de mineração, não a concessionária de distribuição de energia elétrica, e não impõe qualquer dever à Light SESA."
+   },
+   {
+    "id": "52020391",
+    "data": "2026-11-04",
+    "orgao": "MME",
+    "identifica": "Despacho",
+    "categoria": "Outra distribuidora",
+    "motivo": "O despacho se dirige a uma cooperativa de mineração, que não tem relação com a atividade de distribuição de energia elétrica da Light SESA, nem com qualquer encargo, regra ou obrigação do setor…"
+   },
+   {
+    "id": "52020412",
+    "data": "2026-11-04",
+    "orgao": "MME",
+    "identifica": "Alvará nº 8.227, de 1º de NOVEMBRO de 2026",
+    "categoria": "Outro assunto (triagem)",
+    "motivo": "Triagem: Mineração"
+   },
+   {
+    "id": "52020415",
+    "data": "2026-11-04",
+    "orgao": "MME",
+    "identifica": "Despacho",
+    "categoria": "Outro assunto (triagem)",
+    "motivo": "Triagem: Mineração"
+   },
+   {
+    "id": "52021132",
+    "data": "2026-11-04",
+    "orgao": "ANEEL",
+    "identifica": "DESPACHO Nº 4.138, DE 27 DE OUTUBRO DE 2026",
+    "categoria": "Comercialização ou mercado",
+    "motivo": "O despacho dirige-se exclusivamente à unidade interna da ANEEL responsável por instruir pedidos de impugnação, não criando deveres para a Light como distribuidora de energia elétrica."
+   },
+   {
+    "id": "52021153",
+    "data": "2026-11-04",
+    "orgao": "ANEEL",
+    "identifica": "DESPACHO Nº 4.137, DE 27 DE OUTUBRO DE 2026",
+    "categoria": "Sem efeito para a empresa",
+    "motivo": "O despacho trata exclusivamente de recurso administrativo de outra empresa (Rio Paraná Energia S.A.), sem impor qualquer dever, alteração ou obrigação à Light Serviços de Eletricidade S.A."
+   },
+   {
+    "id": "52021246",
+    "data": "2026-11-04",
+    "orgao": "ANEEL",
+    "identifica": "DESPACHO Nº 4.175, DE 29 DE OUTUBRO DE 2026",
+    "categoria": "Usina ou geração de outro agente",
+    "motivo": "O despacho se dirige a uma empresa geradora de energia eólica na Paraíba, e a Light é apenas distribuidora no Rio de Janeiro, sem vínculo direto com a liberação de unidades geradoras em outro estado."
+   },
+   {
+    "id": "52021255",
+    "data": "2026-11-04",
+    "orgao": "ANEEL",
+    "identifica": "DESPACHO Nº 4.181, DE 29 DE OUTUBRO DE 2026",
+    "categoria": "Usina ou geração de outro agente",
+    "motivo": "O despacho se dirige a uma empresa geradora de energia eólica na Paraíba, e a Light é apenas distribuidora no Rio de Janeiro, sem vínculo operacional ou regulatório com essa unidade geradora."
+   },
+   {
+    "id": "52021261",
+    "data": "2026-11-04",
+    "orgao": "ANEEL",
+    "identifica": "DESPACHO Nº 4.170, DE 29 DE OUTUBRO DE 2026",
+    "categoria": "Usina ou geração de outro agente",
+    "motivo": "O despacho se dirige a uma empresa geradora de energia eólica na Paraíba, e a Light é apenas distribuidora no Rio de Janeiro, sem vínculo direto ou obrigação decorrente dessa liberação."
+   },
+   {
+    "id": "52021264",
+    "data": "2026-11-04",
+    "orgao": "ANEEL",
+    "identifica": "DESPACHO Nº 4.172, DE 29 DE OUTUBRO DE 2026",
+    "categoria": "Usina ou geração de outro agente",
+    "motivo": "O despacho se dirige a uma empresa geradora de energia eólica na Paraíba, e a Light é apenas distribuidora no Rio de Janeiro, sem vínculo direto com a liberação de unidades geradoras em outro estado."
+   },
+   {
+    "id": "52021309",
+    "data": "2026-11-04",
+    "orgao": "ANEEL",
+    "identifica": "DESPACHO Nº 4.167, DE 29 DE OUTUBRO DE 2026",
+    "categoria": "Usina ou geração de outro agente",
+    "motivo": "O despacho se dirige a uma empresa geradora de energia eólica na Paraíba, e a Light é apenas distribuidora no Rio de Janeiro, sem vínculo operacional ou financeiro direto com essa unidade geradora."
+   },
+   {
+    "id": "52021321",
+    "data": "2026-11-04",
+    "orgao": "ANEEL",
+    "identifica": "DESPACHO Nº 4.160, DE 29 DE OUTUBRO DE 2026",
+    "categoria": "Usina ou geração de outro agente",
+    "motivo": "O despacho se dirige a uma empresa geradora de energia eólica na Paraíba, e a Light é apenas distribuidora no Rio de Janeiro, sem vínculo operacional ou financeiro direto com essa unidade geradora."
+   },
+   {
+    "id": "52023069",
+    "data": "2026-11-04",
+    "orgao": "Coordenadoria de Recursos e Assessoramen",
+    "identifica": "DECISÃO dE 3 de novembro de 2026",
+    "categoria": "Outro assunto (triagem)",
+    "motivo": "Triagem: Saúde suplementar"
+   },
+   {
+    "id": "52024253",
+    "data": "2026-11-04",
+    "orgao": "Diretoria Colegiada",
+    "identifica": "DELIBERAÇÃO ANTT Nº 309, DE 29 DE OUTUBRO DE 2026",
+    "categoria": "Outro assunto (triagem)",
+    "motivo": "Triagem: Transporte ferroviário"
+   },
+   {
+    "id": "52024352",
+    "data": "2026-11-04",
+    "orgao": "MME",
+    "identifica": "Alvará nº 8.236, de 2 de NOVEMBRO de 2026",
+    "categoria": "Outro assunto (triagem)",
+    "motivo": "Triagem: Mineração"
+   },
+   {
+    "id": "52024954",
+    "data": "2026-11-04",
+    "orgao": "Conselho Regional de Enfermagem do Amazo",
+    "identifica": "DECISÃO COREN-AM Nº 246, DE 27 DE OUTUBRO DE 2025",
+    "categoria": "Outro assunto (triagem)",
+    "motivo": "Triagem: Enfermagem"
+   },
+   {
+    "id": "52025266",
+    "data": "2026-11-04",
+    "orgao": "Gerência de Outorga e Licenciamento de E",
+    "identifica": "ATO Nº 13.501, DE 23 DE OUTUBRO DE 2026",
+    "categoria": "Outro assunto (triagem)",
+    "motivo": "Triagem: telecomunicações"
+   },
+   {
+    "id": "52033456",
+    "data": "2026-11-05",
+    "orgao": "Fazenda",
+    "identifica": "Pauta De Julgamento",
+    "categoria": "Outro assunto (triagem)",
+    "motivo": "Triagem: pauta de julgamento da Receita Federal"
+   },
+   {
+    "id": "52033474",
+    "data": "2026-11-05",
+    "orgao": "MME",
+    "identifica": "Despacho",
+    "categoria": "Outro assunto (triagem)",
+    "motivo": "Triagem: mineração"
+   },
+   {
+    "id": "52033501",
+    "data": "2026-11-05",
+    "orgao": "MME",
+    "identifica": "Despacho",
+    "categoria": "Outro assunto (triagem)",
+    "motivo": "Triagem: mineração"
+   },
+   {
+    "id": "52038310",
+    "data": "2026-11-05",
+    "orgao": "MME",
+    "identifica": "DESPACHO SDL-ANP Nº 1.680, DE 4 DE NOVEMBRO DE 2026",
+    "categoria": "Sem efeito para a empresa",
+    "motivo": "O despacho trata de autorizações para revendedores de combustíveis, atividade regulada pela ANP, e não se aplica à Light, que é concessionária de distribuição de energia elétrica e não atua no setor…"
+   },
+   {
+    "id": "52042514",
+    "data": "2026-11-05",
+    "orgao": "MME",
+    "identifica": "Despacho",
+    "categoria": "Outro assunto (triagem)",
+    "motivo": "Triagem: mineração"
+   },
+   {
+    "id": "52044309",
+    "data": "2026-11-05",
+    "orgao": "ANEEL",
+    "identifica": "DESPACHO Nº 4.186, DE 29 DE OUTUBRO DE 2026",
+    "categoria": "Outra distribuidora",
+    "motivo": "O despacho é direcionado exclusivamente à Equatorial Maranhão, distribuidora localizada no estado do Maranhão, enquanto a Light atua exclusivamente no estado do Rio de Janeiro e não está envolvida…"
+   },
+   {
+    "id": "52044417",
+    "data": "2026-11-05",
+    "orgao": "ANEEL",
+    "identifica": "DESPACHO Nº 4.159, DE 29 DE OUTUBRO DE 2026",
+    "categoria": "Sem efeito para a empresa",
+    "motivo": "O despacho se dirige exclusivamente à Equatorial Energia Goiás, concessionária de distribuição do estado de Goiás, e não à Light Serviços de Eletricidade S.A., que atua apenas no estado do Rio de…"
+   },
+   {
+    "id": "52044420",
+    "data": "2026-11-05",
+    "orgao": "ANEEL",
+    "identifica": "DESPACHO Nº 4.089, DE 3 DE NOVEMBRO DE 2026",
+    "categoria": "Usina ou geração de outro agente",
+    "motivo": "O despacho se dirige a geradoras fotovoltaicas (Solar São Conrado), que são agentes de geração, e não à Light, que é distribuidora. A revogação de autorizações de usinas não impõe deveres à…"
+   },
+   {
+    "id": "52044450",
+    "data": "2026-11-05",
+    "orgao": "ANEEL",
+    "identifica": "RESOLUÇÃO AUTORIZATIVA Nº 16.829, DE 3 DE NOVEMBRO DE 2026",
+    "categoria": "Transmissão",
+    "motivo": "O ato se dirige exclusivamente à Transmissora Brasrio S.A., empresa de transmissão, e não impõe qualquer dever à Light, que é concessionária de distribuição e não participa de licitações ou…"
+   },
+   {
+    "id": "52044453",
+    "data": "2026-11-05",
+    "orgao": "ANEEL",
+    "identifica": "DESPACHO Nº 4.191, DE 30 DE OUTUBRO DE 2026",
+    "categoria": "Usina ou geração de outro agente",
+    "motivo": "O despacho trata exclusivamente de reclamação contra a Cemig Distribuição S.A., que não é a Light Serviços de Eletricidade S.A., e não estabelece regra geral ou alteração normativa que afete a…"
+   },
+   {
+    "id": "52044456",
+    "data": "2026-11-05",
+    "orgao": "ANEEL",
+    "identifica": "Retificação",
+    "categoria": "Sem efeito para a empresa",
+    "motivo": "O ato retifica um despacho da ANEEL referente a um projeto específico de linha de distribuição, sem direcionamento ou impacto direto sobre a Light como concessionária de distribuição no Rio de…"
+   },
+   {
+    "id": "52044480",
+    "data": "2026-11-05",
+    "orgao": "ANEEL",
+    "identifica": "RESOLUÇÃO AUTORIZATIVA Nº 16.831, DE 3 DE NOVEMBRO DE 2026",
+    "categoria": "Sem efeito para a empresa",
+    "motivo": "O ato se dirige exclusivamente à Elektro Redes S.A., concessionária de distribuição em São Paulo, e não impõe qualquer dever à Light Serviços de Eletricidade S.A., que atua apenas no estado do Rio…"
+   },
+   {
+    "id": "52045258",
+    "data": "2026-11-05",
+    "orgao": "ANEEL",
+    "identifica": "DESPACHO Nº 4.118, DE 27 DE OUTUBRO DE 2026",
+    "categoria": "Sem efeito para a empresa",
+    "motivo": "O ato trata da doação de bens de uma empresa de geração (Axia Energia, sucessora de Furnas) para uma universidade, sem qualquer vínculo com as atividades de distribuição de energia elétrica da Light…"
+   },
+   {
+    "id": "52045843",
+    "data": "2026-11-05",
+    "orgao": "Divisão de Execução Orçamentária e Finan",
+    "identifica": "PORTARIA FCP Nº 519, DE 4 DE NOVEMBRO DE 2026",
+    "categoria": "Outro assunto (triagem)",
+    "motivo": "Triagem: Assunto não relacionado"
+   },
+   {
+    "id": "52046194",
+    "data": "2026-11-05",
+    "orgao": "Secretaria de Ciência e Tecnologia para ",
+    "identifica": "PORTARIA SETAD/MCTI Nº 10.552, DE 4 DE NOVEMBRO DE 2026",
+    "categoria": "Outro setor",
+    "motivo": "O ato destina-se exclusivamente à SHORELINE S/A, empresa de tecnologia da informação e comunicação, e não se dirige a concessionárias de distribuição de energia elétrica nem cria deveres para…"
+   },
+   {
+    "id": "52047670",
+    "data": "2026-11-05",
+    "orgao": "Superintendência-Geral",
+    "identifica": "DESPACHOS SG de 4 de novembro de 2026",
+    "categoria": "Outro assunto (triagem)",
+    "motivo": "Triagem: outro setor"
+   },
+   {
+    "id": "52047799",
+    "data": "2026-11-05",
+    "orgao": "MME",
+    "identifica": "Resolução ANM Nº 251, DE 4 DE novembro DE 2026",
+    "categoria": "Outro assunto (triagem)",
+    "motivo": "Triagem: mineração, não energia"
+   },
+   {
+    "id": "52058418",
+    "data": "2026-11-06",
+    "orgao": "MME",
+    "identifica": "Despacho",
+    "categoria": "Outro assunto (triagem)",
+    "motivo": "Triagem: Mineração"
+   },
+   {
+    "id": "52058442",
+    "data": "2026-11-06",
+    "orgao": "MME",
+    "identifica": "Alvará nº 8.240, de 4 de NOVEMBRO de 2026",
+    "categoria": "Outro assunto (triagem)",
+    "motivo": "Triagem: Mineração"
+   },
+   {
+    "id": "52058487",
+    "data": "2026-11-06",
+    "orgao": "MME",
+    "identifica": "Despacho",
+    "categoria": "Outro assunto (triagem)",
+    "motivo": "Triagem: mineração"
+   },
+   {
+    "id": "52058532",
+    "data": "2026-11-06",
+    "orgao": "MME",
+    "identifica": "Despacho",
+    "categoria": "Outro assunto (triagem)",
+    "motivo": "Triagem: mineração"
+   },
+   {
+    "id": "52058535",
+    "data": "2026-11-06",
+    "orgao": "MME",
+    "identifica": "Despacho",
+    "categoria": "Outro assunto (triagem)",
+    "motivo": "Triagem: mineração"
+   },
+   {
+    "id": "52060555",
+    "data": "2026-11-06",
+    "orgao": "Atos do Congresso Nacional",
+    "identifica": "ATO DO PRESIDENTE DA MESA DO CONGRESSO NACIONAL Nº 110, DE 2026",
+    "categoria": "Outro setor",
+    "motivo": "O ato trata de prorrogação de crédito extraordinário para o Ministério de Minas e Energia, sem qualquer vínculo direto ou indireto com obrigações da Light como distribuidora de energia elétrica."
+   },
+   {
+    "id": "52063976",
+    "data": "2026-11-06",
+    "orgao": "Secretaria de Regulação e Supervisão da ",
+    "identifica": "PORTARIA seres/mec nº 553, DE 5 DE NOVEMBRO DE 2026",
+    "categoria": "Outro assunto (triagem)",
+    "motivo": "Triagem: Educação"
+   },
+   {
+    "id": "52064150",
+    "data": "2026-11-06",
+    "orgao": "Serviço de Fiscalização de Insumos e Saú",
+    "identifica": "Portaria Nº 1.160, de 29 DE OUTUBRO DE 2026",
+    "categoria": "Outro assunto (triagem)",
+    "motivo": "Triagem: Agricultura e Pecuária"
+   },
+   {
+    "id": "52064687",
+    "data": "2026-11-06",
+    "orgao": "ANEEL",
+    "identifica": "DESPACHO Nº 4.209, DE 3 DE NOVEMBRO DE 2026",
+    "categoria": "Usina ou geração de outro agente",
+    "motivo": "O despacho trata de um pedido de impugnação apresentado por uma geradora (UTE Maracanaú) contra decisão da CAd/CCEE, e não se dirige a distribuidoras nem altera obrigações aplicáveis à Light como…"
+   },
+   {
+    "id": "52066545",
+    "data": "2026-11-06",
+    "orgao": "Plenário",
+    "identifica": "Registro sem título (continuação de ato anterior)",
+    "categoria": "Outro assunto (triagem)",
+    "motivo": "Triagem: Ata do Tribunal de Contas da União"
+   },
+   {
+    "id": "52066713",
+    "data": "2026-11-06",
+    "orgao": "MME",
+    "identifica": "DESPACHO STM-ANP Nº 1.690, DE 5 DE NOVEMBRO DE 2026",
+    "categoria": "Sem efeito para a empresa",
+    "motivo": "O despacho destina-se exclusivamente à PETROBRAS, empresa de exploração e produção de petróleo e gás, e não se dirige a concessionárias de distribuição de energia elétrica nem altera obrigações do…"
+   },
+   {
+    "id": "52066827",
+    "data": "2026-11-06",
+    "orgao": "Fazenda",
+    "identifica": "Decisão De 14 De Outubro De 2026",
+    "categoria": "Outro assunto (triagem)",
+    "motivo": "Triagem: Transporte de valores"
+   },
+   {
+    "id": "52067220",
+    "data": "2026-11-06",
+    "orgao": "Fazenda",
+    "identifica": "Retificação",
+    "categoria": "Outro assunto (triagem)",
+    "motivo": "Triagem: Tributos"
+   },
+   {
+    "id": "52067436",
+    "data": "2026-11-06",
+    "orgao": "Gabinete",
+    "identifica": "Portaria Nº 2.309, DE 5 DE NOVEMBRO DE 2026",
+    "categoria": "Outro assunto (triagem)",
+    "motivo": "Triagem: Reforma agrária"
+   },
+   {
+    "id": "52067634",
+    "data": "2026-11-06",
+    "orgao": "Gerência Regional no Estado de Minas Ger",
+    "identifica": "ATO Nº 12.085, DE 21 DE SETEMBRO DE 2026",
+    "categoria": "Outro assunto (triagem)",
+    "motivo": "Triagem: Telecomunicações"
+   },
+   {
+    "id": "52068354",
+    "data": "2026-11-06",
+    "orgao": "Coordenação-Geral de Controle de Serviço",
+    "identifica": "ALVARÁ Nº 4.645, DE 3 DE NOVEMBRO DE 2026",
+    "categoria": "Outro assunto (triagem)",
+    "motivo": "Triagem: Alvará de autorização para empresa de segurança"
+   },
+   {
+    "id": "52071636",
+    "data": "2026-11-06",
+    "orgao": "Instituto Nacional de Metrologia, Qualid",
+    "identifica": "Registro sem título (continuação de ato anterior)",
+    "categoria": "Outro setor",
+    "motivo": "O ato é um anexo técnico sem destinatário explícito e não se dirige a concessionárias de distribuição de energia elétrica nem altera deveres regulatórios da Light como distribuidora."
+   }
+  ]
+ }
+}

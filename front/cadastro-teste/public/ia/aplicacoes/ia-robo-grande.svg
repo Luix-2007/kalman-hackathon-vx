@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160" width="160" height="160">
+  <line id="haste-antena" x1="80" y1="22" x2="80" y2="44" stroke="#BFD9EA" stroke-width="8.8" stroke-linecap="round"/>
+  <rect id="orelha-esq" x="8" y="72" width="14" height="36" rx="6" fill="#BFD9EA"/>
+  <rect id="orelha-dir" x="138" y="72" width="14" height="36" rx="6" fill="#BFD9EA"/>
+  <rect id="rosto" x="20" y="40" width="120" height="100" rx="28" fill="#0E1A24"/>
+  <rect id="visor" x="36" y="56" width="88" height="44" rx="16" fill="#0E1A24" stroke="#BFD9EA" stroke-width="6"/>
+  <rect id="olho-esq" x="52" y="68.8" width="12.8" height="18.4" rx="6.4" fill="#FFFFFF"/>
+  <rect id="olho-dir" x="95.2" y="68.8" width="12.8" height="18.4" rx="6.4" fill="#FFFFFF"/>
+  <path id="boca" d="M 54 120 L 68 120 L 74 111.2 L 86 128.8 L 92 120 L 106 120" fill="none" stroke="#FFFFFF" stroke-width="7.2" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle id="detalhe" cx="80" cy="20" r="12" fill="#FF5A1F"/>
+</svg>

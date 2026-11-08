@@ -22,6 +22,13 @@ import { DEMO_EMAIL, demoApi, demoAtivo, demoAuth, demoLogado } from "./demo";
 import { Icone, Marca } from "./identidade/marca";
 import { MotivoAnimado } from "./MotivoAnimado";
 import { ResumoMatriz, TelaMatriz } from "./TelaMatriz";
+import { Dash } from "./dash/Dash";
+
+/** "Concluir cadastro" fica no navegador, por CNPJ (pendência: campo na API). Com ele, /painel abre o dash. */
+const CHAVE_CONCLUIDO = "kalman:cadastro-concluido";
+const cadastroConcluido = (cnpj: string | null) => {
+  try { return !!cnpj && localStorage.getItem(`${CHAVE_CONCLUIDO}:${cnpj}`) === "1"; } catch { return false; }
+};
 
 // ─────────────────────────── integrações (reais ou demonstração) ───────────────────────────
 
@@ -459,8 +466,13 @@ function Painel({ email, onSair }: { email: string; onSair: () => void }) {
   const iniciou = useRef(false);
 
   useEffect(() => { auth.lerNome().then(setMeuNome).catch(() => setMeuNome("")); }, []);
+  const caminho = useLocation().pathname;
+  const ir = useNavigate();
   // /painel/matriz abre a mesma página, já na etapa da matriz (links antigos e atalhos)
-  const foco = useLocation().pathname.startsWith("/painel/matriz") ? "matriz" : undefined;
+  const foco = caminho.startsWith("/painel/matriz") ? "matriz" : undefined;
+  // /painel/cadastro e /painel/matriz mostram o onboarding mesmo depois de concluído (Configurações leva para lá)
+  const noCadastro = /^\/painel\/(cadastro|matriz)/.test(caminho);
+  const [, setConcluiu] = useState(0);
 
   async function consultar(cnpj: string, consultadoAntes: string | null = cadastro?.consultado_em ?? null) {
     setErro("");
@@ -503,7 +515,14 @@ function Painel({ email, onSair }: { email: string; onSair: () => void }) {
   }, []);
 
   const nomeEmpresa = cadastro?.empresa?.nome_fantasia || cadastro?.empresa?.razao_social;
-  useEffect(() => { document.title = "Kalman · Painel"; }, []);
+  const sair = () => { setCadastro(null); carregar().catch(() => undefined); };
+  const membroConferido = cadastro?.papel === "membro" && !!texto(cadastro.dados.conferido_em);
+  const verDash = !!cadastro && !consultando && !trocando && !noCadastro && (cadastroConcluido(cadastro.cnpj) || membroConferido);
+  useEffect(() => { if (!verDash) document.title = "Kalman · Painel"; }, [verDash]);
+  if (verDash && cadastro) return (
+    <Dash cadastro={cadastro} email={email} nome={meuNome ?? ""} onSair={onSair}
+      equipe={<Equipe cadastro={cadastro} onSaiu={sair} />} />
+  );
   let corpo: ReactNode;
   if (cadastro === undefined) corpo = <div className="centro-area"><Carregando /></div>;
   else if (consultando) corpo = <Consultando />;
@@ -512,7 +531,7 @@ function Painel({ email, onSair }: { email: string; onSair: () => void }) {
   else corpo = (
     <Fluxo key={cadastro.cnpj} cadastro={cadastro} email={email} meuNome={meuNome ?? ""} foco={foco} onSalvo={setCadastro}
       onTrocar={() => setTrocando(true)} onReconsultar={() => cadastro.cnpj && consultar(cadastro.cnpj)}
-      onSaiu={() => { setCadastro(null); carregar().catch(() => undefined); }} />
+      onSaiu={sair} onAbrirPainel={() => { setConcluiu((n) => n + 1); ir("/painel"); }} />
   );
 
   return (
@@ -522,6 +541,8 @@ function Painel({ email, onSair }: { email: string; onSair: () => void }) {
           <Link to="/" aria-label="Kalman, ir para o início"><Marca className="barra-marca" /></Link>
           {nomeEmpresa && !consultando && <span className="barra-empresa">{titulo(nomeEmpresa)}</span>}
           <div className="barra-direita">
+            {noCadastro && cadastro && (cadastroConcluido(cadastro.cnpj) || membroConferido) &&
+              <Link className="k-btn k-btn--grafite k-btn--sm" to="/painel">← Voltar ao painel</Link>}
             <span className="barra-email" title={email}>{meuNome || email}</span>
             <button className="k-btn k-btn--contorno k-btn--sm" type="button" onClick={onSair}>Sair</button>
           </div>
@@ -819,9 +840,9 @@ function Dados({ cadastro, email, meuNome, onSalvo, onTrocar, onReconsultar, onC
 
 type EstadoMatriz = "carregando" | "sem_envio" | "enviada";
 
-function Fluxo({ cadastro, email, meuNome, foco, onSalvo, onTrocar, onReconsultar }: {
+function Fluxo({ cadastro, email, meuNome, foco, onSalvo, onTrocar, onReconsultar, onAbrirPainel }: {
   cadastro: Cadastro; email: string; meuNome: string; foco?: "matriz";
-  onSalvo: (c: Cadastro) => void; onTrocar: () => void; onReconsultar: () => void; onSaiu: () => void;
+  onSalvo: (c: Cadastro) => void; onTrocar: () => void; onReconsultar: () => void; onSaiu: () => void; onAbrirPainel: () => void;
 }) {
   const leitura = cadastro.papel === "membro";
   const d = cadastro.dados;
@@ -924,6 +945,7 @@ function Fluxo({ cadastro, email, meuNome, foco, onSalvo, onTrocar, onReconsulta
                 <div>
                   <strong>Cadastro concluído</strong>
                   <p>O Kalman já lê o Diário Oficial todo dia para esta empresa. As normas que valem para ela e as tarefas da matriz aparecem no painel.</p>
+                  <button className="k-btn k-btn--sm" type="button" style={{ marginTop: ".75rem" }} onClick={onAbrirPainel}>Abrir o painel</button>
                 </div>
               </div>
             ) : (
