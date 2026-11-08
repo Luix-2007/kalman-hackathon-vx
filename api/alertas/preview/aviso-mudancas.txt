@@ -1,0 +1,47 @@
+Assunto: Light SESA: 2 mudanças para decidir · 2 tarefas em risco · 1 mudança aprovada
+
+KALMAN · AVISO DE MUDANÇAS
+Resumo de 08/11/2026 · Light SESA
+
+2 mudanças esperam a sua decisão
+1.931 atos lidos no DOU · 13 relevantes · 03 a 06/11
+
+PARA DECIDIR · 2
+
+[Alteração] Responder o pedido de migração ao mercado livre
+   Prazo: Até 10 dias úteis do recebimento da comunicação → Até 5 dias úteis do recebimento da comunicação
+   Responsável: Comercial
+   “A distribuidora tem o prazo de até 5 dias úteis, contados a partir do recebimento da comunicação da migração prevista no art. 166, para verificar os requisitos técnicos e a existência de motivos que impeçam a migração”
+   Fonte: REN ANEEL nº 1.174/2026 · art. 166-A da REN 1.000/2021 · DOU 04/11/2026, p. 68
+   http://pesquisa.in.gov.br/imprensa/jsp/visualiza/index.jsp?data=04/11/2026&jornal=515&pagina=68
+
+[Nova obrigação] Destinar aos consumidores os créditos de PIS/Cofins restituídos
+   Prazo: 10 anos da restituição do indébito ou da homologação da compensação
+   Responsável: Financeiro
+   Fonte: STF · embargos na ADI 7324 · DOU 04/11/2026, p. 1
+
+A IA propõe; a mudança só entra na matriz depois que alguém aprova.
+Revisar no painel: http://localhost:5173/painel
+
+TAREFAS EM RISCO · 2
+
+07/11/2026  Recolher o PROINFA de outubro
+   Atrasada há 1 dia · Financeiro
+10/11/2026  Pagar a quota da CDE de novembro
+   Vence em 2 dias · Financeiro
+
+MUDANÇAS APROVADAS · 1
+
+[Nova obrigação] Dar ao consumidor acesso aos próprios dados por interface padronizada
+   em vigor desde 07/11/2026 · aprovada por Ana Ribeiro · 1 tarefa criada
+   Fonte: REN ANEEL nº 1.175/2026 · art. 22, I · DOU 04/11/2026, p. 91
+   http://pesquisa.in.gov.br/imprensa/jsp/visualiza/index.jsp?data=04/11/2026&jornal=515&pagina=91
+
+—
+Você recebe este resumo porque acompanha Light SESA no Kalman.
+Ele sai todo dia às 08:00 quando há algo novo.
+Abrir o painel: http://localhost:5173/painel
+Ajustar alertas: http://localhost:5173/painel?aba=alertas
+
+Kalman · As normas que valem para a sua empresa, com prazo e responsável.
+E-mail automático: não responda.
