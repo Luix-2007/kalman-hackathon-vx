@@ -255,3 +255,13 @@ def test_rejeicao_nao_mexe_na_vigencia():
     m.decisao("C", "OBR-1", 2, "rejeitar", "dono", datetime(2026, 11, 8, 12))
     v1, v2 = m.versoes[("C", "OBR-1")]
     assert v1["vigente"] and v1["vigente_ate"] is None and v2["vigente_de"] is None
+
+
+def test_mesma_proposta_id_em_empresas_diferentes_nao_se_anulam():
+    """O passo de propostas grava um arquivo por (ato, empresa): os índices se repetem entre empresas."""
+    m = r.Matriz()
+    m.importacao("C", [LINHA], HOJE, "m.csv")
+    m.importacao("D", [LINHA], HOJE, "m.csv")
+    assert m.proposta(proposta("alteracao", pid="ato#0", criticidade="baixa"), HOJE) is not None
+    assert m.proposta({**proposta("alteracao", pid="ato#0", criticidade="baixa"), "cnpj": "D"}, HOJE) is not None
+    assert m.proposta(proposta("alteracao", pid="ato#0", criticidade="baixa"), HOJE) is None   # repetida na mesma empresa

@@ -366,9 +366,12 @@ class Matriz:
 
     def proposta(self, c: dict, em: date) -> Optional[dict]:
         """c: candidata válida do LLM (mudanca, proposta_id, fonte_ato e campos de conteúdo)."""
-        if c["proposta_id"] in self.propostas_vistas:
+        # a mesma proposta (mesmo arquivo e índice) para a mesma empresa conta uma vez; o mesmo
+        # ato pode trazer propostas para várias empresas, com índices que se repetem
+        chave = (c["cnpj"], c["proposta_id"])
+        if chave in self.propostas_vistas:
             return None
-        self.propostas_vistas.add(c["proposta_id"])
+        self.propostas_vistas.add(chave)
         mudanca = c["mudanca"]
         if mudanca == "inclusao":
             base = dict(c)
