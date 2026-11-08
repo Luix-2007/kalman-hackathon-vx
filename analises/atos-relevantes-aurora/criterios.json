@@ -1,0 +1,88 @@
+{
+  "_sobre": "Critérios de relevância de atos do DOU para a Aurora Energia (KALMANTESTE100). Gerados a partir do perfil regulatório (api/cnpj-cadastro/tests/aurora_dados.json) e dos CNAEs da fixture da Receita. Termos são comparados sem acento e em minúsculas, com limite de palavra. Itens com \"origem\": \"inferido\" não estão no perfil: são suposições para revisar.",
+
+  "empresa": {
+    "cnpj": "KALMANTESTE100",
+    "chave_dynamodb": "CNPJ#KALMANTESTE100"
+  },
+
+  "citacao_direta": {
+    "_sobre": "Ato cita a empresa ou uma outorga dela: nível 'direto'.",
+    "termos": [
+      "aurora energia", "kalmanteste100",
+      "cc 012/2012", "012/2012-aneel",
+      "lo 31004567", "avcb 778899", "portaria sp aguas 2210/2018"
+    ]
+  },
+
+  "orgaos": {
+    "_sobre": "Comparados com o campo orgao do DOU (hierarquia 'Ministério/.../Órgão'). CETESB, SP Águas e CBPMESP são estaduais e não publicam no DOU; ONS e CCEE não são órgãos públicos e só aparecem citados no texto (estão no tema setor_eletrico). basta_o_orgao: o ato entra (nível baixo) mesmo sem tema; nos outros órgãos, que publicam muito ato genérico, é preciso um tema. exceto_orgao: subordinados que não contam (ANM e ANP ficam embaixo do MME).",
+    "ANEEL": {"origem": "perfil", "basta_o_orgao": true, "termos": ["agencia nacional de energia eletrica"]},
+    "MTE":   {"origem": "perfil", "termos": ["ministerio do trabalho e emprego", "ministerio do trabalho e previdencia", "ministerio do trabalho"]},
+    "RFB":   {"origem": "perfil", "termos": ["receita federal do brasil", "secretaria especial da receita federal"]},
+    "MME":   {"origem": "inferido", "termos": ["ministerio de minas e energia"], "exceto_orgao": ["agencia nacional de mineracao", "agencia nacional do petroleo"]},
+    "ANA":   {"origem": "inferido", "termos": ["agencia nacional de aguas"]}
+  },
+
+  "temas": {
+    "_sobre": "Temas de interesse do perfil (temas_interesse) e o setor da empresa (setor + CNAEs 3514000, 3511501, 3513100).",
+    "setor_eletrico": {"origem": "setor e CNAEs", "fraco": true, "_fraco": "genérico: sozinho não tira um ato do fora de escopo", "termos": [
+      "energia eletrica", "distribuicao de energia", "concessionaria de distribuicao", "permissionaria de distribuicao",
+      "geracao de energia", "pequena central hidreletrica", "pch", "subestacao", "comercializacao de energia",
+      "camara de comercializacao de energia eletrica", "ccee", "operador nacional do sistema eletrico", "ons",
+      "sistema interligado nacional"
+    ]},
+    "contabilidade_regulatoria": {"origem": "perfil", "termos": [
+      "contabilidade regulatoria", "manual de contabilidade do setor eletrico", "mcse",
+      "balancete mensal padronizado", "prestacao anual de contas", "base de remuneracao regulatoria"
+    ]},
+    "qualidade_do_servico": {"origem": "perfil", "termos": [
+      "prodist", "indicadores de continuidade", "dec e fec", "dec/fec", "duracao equivalente de interrupcao",
+      "frequencia equivalente de interrupcao", "qualidade do servico", "qualidade da energia",
+      "compensacao por violacao", "interrupcao do fornecimento"
+    ]},
+    "licenciamento_ambiental": {"origem": "perfil", "termos": [
+      "licenciamento ambiental", "licenca de operacao", "licenca ambiental", "licenca previa", "licenca de instalacao",
+      "conama"
+    ]},
+    "recursos_hidricos": {"origem": "perfil", "termos": [
+      "recursos hidricos", "outorga de direito de uso", "outorga de uso de recursos hidricos", "bacia hidrografica",
+      "cobranca pelo uso", "reserva de disponibilidade hidrica"
+    ]},
+    "seguranca_barragens": {"origem": "perfil", "termos": [
+      "seguranca de barragens", "seguranca de barragem", "barragem", "barragens", "plano de seguranca da barragem",
+      "politica nacional de seguranca de barragens", "lei no 12.334", "lei 12.334"
+    ]},
+    "seguranca_do_trabalho": {"origem": "perfil", "termos": [
+      "seguranca e saude no trabalho", "norma regulamentadora", "nr-10", "nr 10", "nr-12", "nr-35", "nr-1",
+      "cipa", "gerenciamento de riscos ocupacionais"
+    ]},
+    "tarifas": {"origem": "perfil", "termos": [
+      "reajuste tarifario", "revisao tarifaria", "tarifa de energia", "tarifas de energia", "tusd", "tust",
+      "bandeira tarifaria", "bandeiras tarifarias", "tfsee", "taxa de fiscalizacao de servicos de energia eletrica",
+      "conta de desenvolvimento energetico"
+    ]},
+    "societario": {"origem": "perfil", "termos": [
+      "transferencia de controle", "anuencia previa", "reorganizacao societaria", "transferencia de concessao"
+    ]}
+  },
+
+  "fora_de_escopo": {
+    "_sobre": "temas_fora_escopo do perfil. Ato com estes termos e sem citação direta nem tema de interesse vai para descartados.csv.",
+    "telecomunicacoes": ["telecomunicacoes", "anatel", "radiodifusao", "radiofrequencia", "espectro"],
+    "petroleo_e_gas": ["petroleo", "gas natural", "agencia nacional do petroleo", "anp", "combustiveis", "biocombustiveis"]
+  },
+
+  "regiao": {
+    "_sobre": "ufs_atuacao (SP, MG) e municipios_atuacao (3509502 Campinas, 3525904 Jundiaí). Só soma no score, não decide o nível.",
+    "termos": ["sao paulo", "minas gerais", "campinas", "jundiai"]
+  },
+
+  "score": {
+    "_sobre": "nivel: direto (cita a empresa) > alto (órgão + tema que não seja fraco) > medio (só tema, ou órgão + só tema fraco) > baixo (só órgão com basta_o_orgao). score = base do nível + bônus.",
+    "base": {"direto": 100, "alto": 60, "medio": 30, "baixo": 15},
+    "por_tema_extra": 5,
+    "regiao": 5,
+    "orgao_inferido_vale_menos": 10
+  }
+}
