@@ -16,7 +16,8 @@ O agente não autentica ninguém. Quem garante a identidade é esta Lambda:
   - o `sub` vem do token (JWT authorizer do API Gateway), nunca do corpo;
   - o CNPJ e o papel vêm do item do usuário na tabela do cadastro (só leitura);
   - só a role desta Lambda pode invocar o runtime do agente;
-  - o session id do runtime é sha256(sub:session_id): um usuário não entra na conversa de outro.
+  - o session id do runtime é sha256(cnpj:sub:session_id): um usuário não entra na conversa de
+    outro, e quem muda de organização começa outra conversa.
 Dono e membros conversam (é leitura); nenhuma ferramenta do agente escreve.
 
 Limite por usuário: LIMITE_HORA e LIMITE_DIA mensagens (contador atômico no DynamoDB, uma
@@ -156,9 +157,10 @@ def _corpo(event: dict) -> tuple[str, str]:
     return prompt.strip(), session_id
 
 
-def sessao(user_id: str, session_id: str) -> str:
-    """64 caracteres (o runtime exige 33 ou mais). Depende do usuário: não dá para entrar na de outro."""
-    return hashlib.sha256(f"{user_id}:{session_id}".encode()).hexdigest()
+def sessao(cnpj: str, user_id: str, session_id: str) -> str:
+    """64 caracteres (o runtime exige 33 ou mais). Depende do usuário: não dá para entrar na de outro.
+    Depende da empresa: quem muda de organização não continua, na nova, a conversa sobre a antiga."""
+    return hashlib.sha256(f"{cnpj}:{user_id}:{session_id}".encode()).hexdigest()
 
 
 def perguntar(cnpj: str, user_id: str, prompt: str, session_id: str) -> dict:
@@ -199,7 +201,7 @@ def handler(event, context=None):
         registro.update(cnpj=cnpj, papel=papel)
         prompt, session_id = _corpo(event)
         contar_mensagem(user_id)
-        saida = perguntar(cnpj, user_id, prompt, sessao(user_id, session_id))
+        saida = perguntar(cnpj, user_id, prompt, sessao(cnpj, user_id, session_id))
         bruto = saida.get("blocos")
         dados = modelo_de_blocos.validos(bruto)   # o front só recebe blocos com a forma do contrato
         if bruto is not None and (not isinstance(bruto, list) or len(dados) != len(bruto)):

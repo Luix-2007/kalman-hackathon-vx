@@ -160,6 +160,15 @@ def test_sessao_tem_64_caracteres_e_depende_do_usuario(api):
     assert [json.loads(c["payload"])["session_id"] for c in api.fake.chamadas] == runtime
 
 
+def test_quem_muda_de_organizacao_comeca_outra_conversa(api):
+    enviar(api, "dono", {"prompt": "oi", "session_id": "conversa-1"})
+    api._cadastro.put_item(Item={"user_id": "dono", "cnpj": OUTRO, "papel": "membro"})   # aceitou convite de outra
+    enviar(api, "dono", {"prompt": "oi", "session_id": "conversa-1"})
+    antes, depois = (c["runtimeSessionId"] for c in api.fake.chamadas)
+    assert antes != depois
+    assert json.loads(api.fake.chamadas[1]["payload"])["cnpj"] == OUTRO
+
+
 def test_sem_session_id_usa_uma_conversa_por_usuario(api):
     enviar(api, "dono")
     enviar(api, "dono")
