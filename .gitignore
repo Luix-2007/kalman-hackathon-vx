@@ -30,3 +30,6 @@ dist/
 
 # Pacote do agente do chatbot (zip gerado pelo make)
 ia/chatbot/build/
+
+# TypeScript (cache do build incremental)
+*.tsbuildinfo
