@@ -156,7 +156,7 @@ São duas stacks, em pastas separadas: **`chatbot-api`** (a Lambda de entrada, a
 
 | Resposta | Quando |
 |---|---|
-| **200** `{"resposta": "texto"}` | ok. A resposta é texto: mostre como texto, nunca como HTML |
+| **200** `{"resposta": "resumo", "blocos": [...]}` | ok. `resposta` é um resumo curto em texto puro (nunca como HTML); `blocos` são os dados que a tela desenha (ver [Contrato da resposta](#contrato-da-resposta)) |
 | **400** | JSON inválido, `prompt` vazio ou com mais de 2000 caracteres, `session_id` inválido |
 | **401 / 404** | sem token / usuário sem organização (envie um CNPJ ou aceite um convite) |
 | **429** + `Retry-After` | passou de 20 mensagens por hora ou 100 por dia (configurável no template) |
@@ -175,16 +175,51 @@ Contrato interno, no mesmo formato das outras APIs. Só a Lambda o invoca (o run
 | | Formato |
 |---|---|
 | Entrada | `{"cnpj": "...", "user_id": "<sub>", "prompt": "...", "session_id": "..."}` (`session_id` só é exigido com `MEMORY_ID`) |
-| Saída | `{"resposta": "texto", "consultas": 2}` |
+| Saída | `{"resposta": "resumo", "blocos": [...], "consultas": 2}` (a Lambda repassa `resposta` e `blocos`) |
 | Erro | `{"erro": "mensagem"}` para payload inválido ou falha interna |
 
 Ferramentas (só leitura, todas com o CNPJ fixado no código: o modelo escolhe a ferramenta e poucos parâmetros, nunca o CNPJ nem o SQL, e todo valor vai como parâmetro da consulta): `painel_da_empresa`, `atos_no_dou`, `atualizacao_dos_dados`, `obrigacoes_da_empresa`, `tarefas`, `linha_do_tempo`, `obrigacao_detalhe`. Nenhuma devolve quem decidiu algo (o `sub` identifica uma pessoa).
 
 Proteções do agente:
 - **Falhas:** o Strands repassa ao modelo a mensagem de qualquer exceção de ferramenta, então toda ferramenta passa por um invólucro que registra o motivo no log e devolve uma mensagem genérica.
-- **Custo:** no máximo 6 consultas por pergunta, 1024 tokens de saída, consultas ao Athena canceladas aos 25 s.
+- **Custo:** no máximo 6 consultas por pergunta, 512 tokens de saída (o modelo só escreve um resumo curto), consultas ao Athena canceladas aos 25 s.
+- **Estabilidade:** temperatura 0,2 e um prompt que fixa o formato do resumo (até 3 frases, texto corrido, sem listas, tabelas nem Markdown). Os dados vão nos blocos, não no texto do modelo.
 - **Guardrail do Bedrock** (versão publicada, não o rascunho): ataque de prompt na entrada, filtros de ódio, insultos, violência, conteúdo sexual e conduta imprópria, e-mail e telefone anonimizados, CPF formatado anonimizado, cartão, chaves e senhas bloqueados. Nomes de pessoas não são filtrados, para não quebrar razão social e responsáveis. Para mudar o Guardrail, altere `GuardrailRevisao` no template, senão o CloudFormation não publica uma versão nova.
 - **Prompt do sistema:** o texto vindo das ferramentas (ementas, trechos de atos) é dado, nunca instrução; pedidos sobre outra empresa são recusados.
+
+### Contrato da resposta
+
+A resposta de `POST /chatbot/mensagens` é **sempre** `{"resposta": string, "blocos": Bloco[]}`:
+
+- `resposta`: o resumo escrito pelo modelo. Texto puro.
+- `blocos`: os dados que a tela desenha. **São montados em código** a partir do que as consultas devolveram (`ia/chatbot/blocos.py`), não escritos pelo modelo. Por isso o formato é sempre o mesmo, o modelo não consegue errar uma data ou um prazo ao transcrever, e a mesma pergunta gera a mesma tela. Pode vir vazio (recusa, pergunta sem dado).
+
+Cada bloco é `{"tipo", "parametros", "itens"}`. Todos os campos de um item sempre existem (`null` quando não há valor):
+
+| `tipo` | Itens | Parâmetros úteis |
+|---|---|---|
+| `tarefas` | `descricao`, `vencimento`, `status`, `em_risco`, `area_responsavel`, `obrigacao_id`, `obrigacao_versao` | `em_risco: true` |
+| `linha_do_tempo` | `ocorrido_em`, `obrigacao_id`, `titulo`, `versao`, `evento`, `resumo`, `ato_id`, `data_ato`, `trecho_citado`, `alteracoes` (`[{campo, antes, depois}]`) | `obrigacao_id` |
+| `obrigacoes` | `obrigacao_id`, `versao`, `titulo`, `orgao_sigla`, `prazo_regra`, `area_responsavel`, `criticidade`, `status`, `vigente`, `vigente_de`, `vigente_ate`... | |
+| `versoes` | todas as versões de uma obrigação, com `vigente_de`/`vigente_ate`, `trecho_citado`, `aplica_a` | `obrigacao_id` |
+| `atos` | `data_publicacao`, `tipo`, `orgao`, `identifica`, `ementa`, `url_pdf` (só `http(s)`) | |
+| `empresa` | `razao_social`, `cnpj`, `situacao_cadastral`, `atos_no_dou`, `ato_mais_recente`... (1 item) | |
+
+Exemplo (`"Quais tarefas estão em risco?"`):
+
+```json
+{
+  "resposta": "Há 2 tarefas em risco. A mais urgente é a renovação da Licença de Operação, que vence em 10/11/2026.",
+  "blocos": [{
+    "tipo": "tarefas", "parametros": {"em_risco": true},
+    "itens": [{"descricao": "Pedir a renovação da Licença de Operação — LO 31004567", "vencimento": "2026-11-10",
+               "status": "aberta", "em_risco": true, "area_responsavel": "GMA",
+               "obrigacao_id": "OBR-009", "obrigacao_versao": 1}]
+  }]
+}
+```
+
+O contrato fica em `ia/chatbot/contrato/`: **`schema.json`** (JSON Schema, para validar) e **`exemplos.json`** (respostas de exemplo da Aurora, que servem de mock para desenhar a tela sem backend). Os dois são gerados do código (`make ia-chatbot-contrato`) e um teste falha se ficarem desatualizados. Os tipos TypeScript em `front/cadastro-teste/src/chatbot.ts` seguem o schema campo a campo (também conferido por teste) e `BlocosChat.tsx` mostra como desenhar cada tipo. A Lambda só repassa blocos com essa forma; o resto é descartado e vai para o log. Para dar um novo tipo de dado ao assistente: uma ferramenta nova, uma entrada em `blocos.py`, `make ia-chatbot-contrato` e `make ia-chatbot-sync-blocos` (a Lambda usa uma cópia do `blocos.py`, conferida por teste).
 
 ### Implantação
 
