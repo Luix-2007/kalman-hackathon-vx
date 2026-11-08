@@ -176,6 +176,7 @@ def test_guardrail_configurado_pelo_ambiente(agent, monkeypatch):
     agent.invoke(pedido())
     kw = AgenteFalso.criados[0].kw["model"].kw
     assert kw["guardrail_id"] == "gr-123" and kw["guardrail_version"] == "3"
+    assert kw["guardrail_latest_message"] is True   # o texto do DOU (resultado de ferramenta) não é filtrado como pergunta
 
 
 # ---------------------------------------------------------------- escopo por CNPJ
@@ -303,6 +304,44 @@ def test_consulta_demorada_e_cancelada(agent, monkeypatch):
     monkeypatch.setattr(agent, "ESPERA_MAX_S", -1)
     assert ferramentas(agent)["painel_da_empresa"]() == [{"erro": agent.ERRO_CONSULTA}]
     assert agent.athena.parou
+
+
+def test_sem_tempo_a_ferramenta_recusa_sem_consultar(agent):
+    estado = {"prazo": agent.time.monotonic() + agent.FOLGA_S / 2}
+    r = ferramentas(agent, estado=estado)["tarefas"]()
+    assert r == [{"erro": agent.ERRO_TEMPO}]
+    assert agent.athena.chamadas == [] and estado["chamadas"] == 0   # recusa não gasta o orçamento
+
+
+def test_consulta_nao_espera_alem_do_prazo_da_pergunta(agent, monkeypatch):
+    agent.athena = AthenaFalso(estados=["RUNNING"])
+    relogio = iter(range(1000))                       # cada leitura do relógio avança 1 s
+    monkeypatch.setattr(agent.time, "monotonic", lambda: next(relogio))
+    monkeypatch.setattr(agent, "ESPERA_MAX_S", 500)   # bem maior que o prazo
+    estado = {"prazo": 8}
+    assert ferramentas(agent, estado=estado)["painel_da_empresa"]() == [{"erro": agent.ERRO_CONSULTA}]
+    assert agent.athena.parou
+    assert next(relogio) < 20                         # parou perto do prazo, não em 500 s
+
+
+def test_cada_pergunta_tem_seu_prazo(agent):
+    agent.invoke(pedido(prompt="consulta"))
+    assert len(agent.athena.chamadas) == 2            # o prazo do invoke deu tempo às duas consultas
+    assert getattr(agent._local, "prazo", None) is None
+
+
+def test_contador_de_consultas_aguenta_chamadas_paralelas(agent):
+    from concurrent.futures import ThreadPoolExecutor
+    estado = {}
+    f = ferramentas(agent, estado=estado)
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        list(pool.map(lambda _: f["tarefas"](), range(agent.MAX_CHAMADAS * 3)))
+    assert estado["chamadas"] == agent.MAX_CHAMADAS == len(agent.athena.chamadas)
+
+
+def test_memoria_por_usuario_e_empresa(agent):
+    assert agent.ator(CNPJ, "u-1") != agent.ator("OUTRAEMPRESA01", "u-1")
+    assert agent.ator(CNPJ, "u-1") == f"{CNPJ}-u-1"
 
 
 def test_resultado_vazio(agent):

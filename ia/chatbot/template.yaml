@@ -177,7 +177,11 @@ Resources:
         GUARDRAIL_ID: !GetAtt Guardrail.GuardrailId
         GUARDRAIL_VERSION: !GetAtt GuardrailVersion.Version
         MEMORY_ID: !If [TemMemoria, !Ref MemoryId, !Ref AWS::NoValue]
+        # Tempo: a Lambda do chatbot-api espera 26 s. O agente consulta por até 18 s (PRAZO_S),
+        # cada consulta espera no máximo 10 s, e o resto fica para a última resposta do modelo.
         MAX_CHAMADAS: "6"
+        PRAZO_S: "18"
+        ATHENA_ESPERA_MAX_S: "10"
         MAX_TOKENS: "1024"
         LOG_LEVEL: INFO
 

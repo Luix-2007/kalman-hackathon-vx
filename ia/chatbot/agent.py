@@ -24,7 +24,12 @@ Segurança:
   - o Strands repassa ao modelo a mensagem de qualquer exceção de ferramenta, então toda
     ferramenta passa por `_seguro`: o motivo da falha fica só no log;
   - no máximo MAX_CHAMADAS consultas por pergunta, e a resposta tem teto de tokens;
-  - os blocos só têm colunas conhecidas (blocos.py) e link http(s); nada que identifique pessoas.
+  - os blocos só têm colunas conhecidas (blocos.py) e link http(s); nada que identifique pessoas;
+  - a memória (se houver) é por usuário E empresa: quem muda de organização não leva a conversa.
+
+Tempo: a Lambda espera o agente por 26 s (o API Gateway corta em 30 s). Cada pergunta tem um
+prazo de PRAZO_S para consultar; depois dele as ferramentas recusam e o modelo responde com o
+que já tem, e nenhuma consulta espera além do prazo. Sobra o tempo da última resposta do modelo.
 """
 
 import functools
@@ -33,6 +38,7 @@ import json
 import logging
 import os
 import re
+import threading
 import time
 
 import boto3
@@ -59,6 +65,8 @@ GUARDRAIL_VERSION = os.environ.get("GUARDRAIL_VERSION", "DRAFT")
 MAX_TOKENS    = int(os.environ.get("MAX_TOKENS", "512"))      # o resumo é curto; os dados vão nos blocos
 TEMPERATURA   = float(os.environ.get("TEMPERATURA", "0.2"))   # baixa: a mesma pergunta, a mesma resposta
 MAX_CHAMADAS  = int(os.environ.get("MAX_CHAMADAS", "6"))
+PRAZO_S       = float(os.environ.get("PRAZO_S", "18"))     # para consultar; a Lambda espera 26 s no total
+FOLGA_S       = 2.0                                         # não começa consulta com menos que isto
 
 CNPJ = re.compile(r"[0-9A-Z]{12}[0-9]{2}")
 USER_ID = re.compile(r"[A-Za-z0-9-]{1,64}")
@@ -68,10 +76,15 @@ PROMPT_MAX = 2000
 
 ERRO_CONSULTA = "não foi possível consultar os dados agora"
 ERRO_ORCAMENTO = "limite de consultas desta pergunta atingido; responda com o que já foi consultado"
+ERRO_TEMPO = "tempo para consultar esgotado; responda com o que já foi consultado"
 ERRO_RESPOSTA = "não foi possível responder agora, tente de novo"
 
 app = BedrockAgentCoreApp()
 athena = boto3.client("athena", region_name=REGION)
+
+# Prazo da pergunta em curso, visto pela consulta. A ferramenta e a consulta rodam na mesma
+# thread (o Strands pode rodar ferramentas em paralelo, cada uma na sua).
+_local = threading.local()
 
 SYSTEM_PROMPT = """Você é o assistente da Kalman. Responda em português, de forma objetiva,
 usando SOMENTE os dados retornados pelas ferramentas. Se não houver dado, diga que não encontrou.
@@ -106,13 +119,16 @@ def _athena_query(sql, params):
         args["ResultConfiguration"] = {"OutputLocation": ATHENA_OUTPUT}
     qid = athena.start_query_execution(**args)["QueryExecutionId"]
     limite = time.monotonic() + ESPERA_MAX_S
+    prazo = getattr(_local, "prazo", None)
+    if prazo is not None:
+        limite = min(limite, prazo)
     while True:
         st = athena.get_query_execution(QueryExecutionId=qid)["QueryExecution"]["Status"]
         if st["State"] in ("SUCCEEDED", "FAILED", "CANCELLED"):
             break
         if time.monotonic() > limite:
             athena.stop_query_execution(QueryExecutionId=qid)
-            log.error("consulta %s passou de %ss", qid, ESPERA_MAX_S)
+            log.error("consulta %s cancelada: passou do tempo (máx. %ss ou o prazo da pergunta)", qid, ESPERA_MAX_S)
             return [{"erro": ERRO_CONSULTA}]
         time.sleep(0.5)
     if st["State"] != "SUCCEEDED":
@@ -150,28 +166,38 @@ def _guardar_bloco(estado, fn, args, kwargs, linhas):
 
 
 def make_tools(cnpj, estado=None):
-    """Ferramentas da empresa `cnpj`. `estado` (opcional) conta as chamadas da pergunta."""
+    """Ferramentas da empresa `cnpj`. `estado` (opcional) conta as chamadas da pergunta e guarda
+    o prazo dela (`prazo`, em time.monotonic(); padrão: PRAZO_S a partir de agora)."""
     estado = estado if estado is not None else {"chamadas": 0}
     estado.setdefault("chamadas", 0)
     estado.setdefault("blocos", {})
+    estado.setdefault("prazo", time.monotonic() + PRAZO_S)
+    trava = threading.Lock()      # o Strands pode chamar ferramentas ao mesmo tempo
     empresa = f"'{cnpj}'"
 
     def seguro(fn):
         @functools.wraps(fn)
         def ferramenta(*args, **kwargs):
-            if estado["chamadas"] >= MAX_CHAMADAS:
-                return [{"erro": ERRO_ORCAMENTO}]
-            estado["chamadas"] += 1
+            with trava:
+                if estado["chamadas"] >= MAX_CHAMADAS:
+                    return [{"erro": ERRO_ORCAMENTO}]
+                if estado["prazo"] - time.monotonic() < FOLGA_S:
+                    return [{"erro": ERRO_TEMPO}]
+                estado["chamadas"] += 1
+            _local.prazo = estado["prazo"]
             try:
                 linhas = fn(*args, **kwargs)
                 try:
-                    _guardar_bloco(estado, fn, args, kwargs, linhas)
+                    with trava:
+                        _guardar_bloco(estado, fn, args, kwargs, linhas)
                 except Exception:     # o bloco é um extra: nunca pode tirar os dados do modelo
                     log.exception("falha ao montar o bloco de %s", fn.__name__)
                 return linhas
             except Exception:
                 log.exception("falha na ferramenta %s", fn.__name__)
                 return [{"erro": ERRO_CONSULTA}]
+            finally:
+                _local.prazo = None
         return ferramenta
 
     @tool
@@ -265,7 +291,11 @@ def make_tools(cnpj, estado=None):
 def _modelo():
     config = {"model_id": MODEL_ID, "max_tokens": MAX_TOKENS, "temperature": TEMPERATURA}
     if GUARDRAIL_ID:
-        config.update(guardrail_id=GUARDRAIL_ID, guardrail_version=GUARDRAIL_VERSION)
+        # Só a última mensagem do usuário passa pelos filtros de entrada: o texto dos atos do DOU
+        # que as ferramentas devolvem não é pergunta de ninguém, e o filtro de ataque de prompt
+        # (HIGH) poderia bloquear uma resposta legítima por causa dele. A saída continua filtrada.
+        config.update(guardrail_id=GUARDRAIL_ID, guardrail_version=GUARDRAIL_VERSION,
+                      guardrail_latest_message=True)
     return BedrockModel(region_name=REGION, **config)
 
 
@@ -288,20 +318,26 @@ def _validar(payload):
     return cnpj, user_id, prompt, session_id
 
 
+def ator(cnpj, user_id):
+    """Dono da memória: o usuário NA empresa. Quem sai da empresa A e entra na B começa do zero
+    na B, sem o que foi conversado (e consultado) sobre a A."""
+    return f"{cnpj}-{user_id}"
+
+
 @app.entrypoint
 def invoke(payload, context=None):
     try:
         cnpj, user_id, prompt, session_id = _validar(payload)
     except ValueError as exc:
         return {"erro": str(exc)}
-    estado = {"chamadas": 0}
+    estado = {"chamadas": 0, "prazo": time.monotonic() + PRAZO_S}
     try:
         session_manager = None
         if MEMORY_ID:
             from bedrock_agentcore.memory.integrations.strands.config import AgentCoreMemoryConfig
             from bedrock_agentcore.memory.integrations.strands.session_manager import AgentCoreMemorySessionManager
             session_manager = AgentCoreMemorySessionManager(
-                AgentCoreMemoryConfig(memory_id=MEMORY_ID, session_id=session_id, actor_id=user_id),
+                AgentCoreMemoryConfig(memory_id=MEMORY_ID, session_id=session_id, actor_id=ator(cnpj, user_id)),
                 region_name=REGION)
         agent = Agent(model=_modelo(), system_prompt=SYSTEM_PROMPT,
                       tools=make_tools(cnpj, estado), session_manager=session_manager)
