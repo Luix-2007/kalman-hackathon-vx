@@ -25,7 +25,6 @@ const erroDe = (e: unknown) => {
 const dataHora = (iso?: string | null) =>
   iso ? new Date(iso).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }).replace(",", " às") : "";
 const tamanho = (b: number) => (b < 1024 ? `${b} B` : b < 1024 * 1024 ? `${Math.round(b / 1024)} KB` : `${(b / 1024 / 1024).toFixed(1)} MB`);
-const minutos = (de: string) => Math.max(0, Math.floor((Date.now() - new Date(de).getTime()) / 60000));
 /** "20261107-215413-matriz.csv" → "matriz.csv" (o prefixo é a data do envio, que já aparece ao lado). */
 const nomeOriginal = (arquivo: string) => arquivo.replace(/^\d{8}-\d{6}-/, "");
 
@@ -37,76 +36,96 @@ type Escolhido =
   | { tipo: "csv"; nome: string; texto: string; conferencia: Conferencia }
   | { tipo: "xlsx"; nome: string; base64: string; tamanho: number };
 
-export function TelaMatriz({ cadastro }: { cadastro: Cadastro }) {
+export function TelaMatriz({ cadastro, onEnvio, onPular }: {
+  cadastro: Cadastro;
+  /** enviada = já existe planilha desta empresa; porAcao = acabou de ser enviada agora (o fluxo segue para a equipe) */
+  onEnvio?: (enviada: boolean, porAcao: boolean) => void;
+  /** "Pular esta etapa": quem ainda não tem a planilha segue para a equipe */
+  onPular?: () => void;
+}) {
   const dono = cadastro.papel === "dono";
   const [importacoes, setImportacoes] = useState<Importacao[] | null>(null);
   const [processamento, setProcessamento] = useState<Processamento>(null);
   const [obrigacoes, setObrigacoes] = useState<Obrigacao[] | null>(null);
   const [aviso, setAviso] = useState("");
   const [erro, setErro] = useState("");
+  const [novaVersao, setNovaVersao] = useState(false);
+  const avisou = useRef(false);
 
   const carregarEstado = useCallback(async () => {
     try {
       const r = await api.getImportacoes();
       setImportacoes(r.importacoes);
       setProcessamento(r.processamento);
+      if (!avisou.current) { avisou.current = true; onEnvio?.(r.importacoes.length > 0, false); }
       return r.processamento;
     } catch (e) {
       setErro(erroDe(e));
       setImportacoes([]);
+      if (!avisou.current) { avisou.current = true; onEnvio?.(false, false); }
       return null;
     }
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const carregarObrigacoes = useCallback(async () => {
     try {
       const r = await api.getObrigacoes();
       setObrigacoes(r.obrigacoes);
       setAviso(r.aviso ?? "");
-    } catch (e) {
-      setErro(erroDe(e));
-      setObrigacoes([]);
+    } catch {
+      setObrigacoes([]); // sem matriz processada ainda: a seção só aparece quando houver
     }
   }, []);
 
   useEffect(() => { carregarEstado(); carregarObrigacoes(); }, [carregarEstado, carregarObrigacoes]);
 
-  // enquanto processa, confere a cada 15 s; quando termina, recarrega as obrigações
-  const rodando = processamento?.estado === "RUNNING";
+  // a análise roda em segundo plano; enquanto roda, a tela confere de vez em quando, sem prender ninguém
+  const analisando = processamento?.estado === "RUNNING";
   useEffect(() => {
-    if (!rodando) return;
+    if (!analisando) return;
     const t = setInterval(async () => {
       const p = await carregarEstado();
       if (p && p.estado !== "RUNNING") carregarObrigacoes();
-    }, demoAtivo ? 3000 : 15000);
+    }, demoAtivo ? 3000 : 30000);
     return () => clearInterval(t);
-  }, [rodando, carregarEstado, carregarObrigacoes]);
+  }, [analisando, carregarEstado, carregarObrigacoes]);
 
   const unidades = useMemo(() => idsDoPerfil(cadastro.dados.unidades), [cadastro.dados.unidades]);
   const areas = useMemo(() => idsDoPerfil(cadastro.dados.areas), [cadastro.dados.areas]);
+  const enviada = (importacoes?.length ?? 0) > 0;
+  const pronta = enviada && !analisando && (obrigacoes?.length ?? 0) > 0;
+
+  if (importacoes === null) return <div className="matriz"><span className="carregando" role="status" aria-label="Carregando" /></div>;
 
   return (
     <div className="matriz">
-      <div className="conferencia-cabeca">
-        <h2>Matriz de obrigações</h2>
-        <p>
-          As obrigações que a empresa já acompanha. Envie a planilha: cada linha vira obrigação com prazo calculado e
+      {!enviada && (
+        <p className="etapa-apoio">
+          Envie a planilha de obrigações que a empresa já acompanha. Cada linha vira uma obrigação com prazo calculado e
           tarefas com data, e o Kalman passa a avisar quando uma norma nova mudar alguma delas.
         </p>
-      </div>
+      )}
 
       {erro && <p className="msg msg-erro" role="alert">{erro}</p>}
 
-      {dono ? (
+      {enviada && <Recebida importacoes={importacoes!} processamento={processamento}
+        onNova={dono && !novaVersao ? () => setNovaVersao(true) : undefined} />}
+
+      {dono && (!enviada || novaVersao) && (
         <Envio unidades={unidades} areas={areas} temUnidades={unidades.size > 0}
-          onEnviado={(p) => { setProcessamento(p); carregarEstado(); }} />
-      ) : (
-        <p className="nota-leitura"><span className="k-ponto" aria-hidden="true" /> Quem envia a planilha é quem criou a conta. Você acompanha o resultado aqui.</p>
+          onCancelar={enviada ? () => setNovaVersao(false) : undefined}
+          onEnviado={(p) => { setProcessamento(p); setNovaVersao(false); carregarEstado(); onEnvio?.(true, true); }} />
       )}
 
-      <Estado importacoes={importacoes} processamento={processamento} />
+      {!dono && !enviada && (
+        <p className="nota-leitura"><span className="k-ponto" aria-hidden="true" /> Quem envia a planilha é quem criou a conta. O resultado aparece aqui.</p>
+      )}
 
-      <Obrigacoes obrigacoes={obrigacoes} aviso={aviso} />
+      {onPular && !enviada && (
+        <p className="pular">Ainda não tem a planilha? <button type="button" className="link" onClick={onPular}>Pular esta etapa</button></p>
+      )}
+
+      {pronta && <Obrigacoes obrigacoes={obrigacoes!} aviso={aviso} />}
     </div>
   );
 }
@@ -117,8 +136,8 @@ function idsDoPerfil(lista: unknown): Set<string> {
 
 // ─────────────────────────── 1. envio ───────────────────────────
 
-function Envio({ unidades, areas, temUnidades, onEnviado }: {
-  unidades: Set<string>; areas: Set<string>; temUnidades: boolean; onEnviado: (p: Processamento) => void;
+function Envio({ unidades, areas, temUnidades, onEnviado, onCancelar }: {
+  unidades: Set<string>; areas: Set<string>; temUnidades: boolean; onEnviado: (p: Processamento) => void; onCancelar?: () => void;
 }) {
   const [escolhido, setEscolhido] = useState<Escolhido | null>(null);
   const [arrastando, setArrastando] = useState(false);
@@ -157,7 +176,6 @@ function Envio({ unidades, areas, temUnidades, onEnviado }: {
       const r = await api.importarMatriz(escolhido.nome,
         escolhido.tipo === "csv" ? { texto: escolhido.texto } : { base64: escolhido.base64 });
       setEscolhido(null);
-      setMsg({ tipo: "ok", texto: "Planilha recebida. O processamento começou e leva de 7 a 15 minutos; pode sair desta tela." });
       onEnviado(r.processamento);
     } catch (e) {
       setMsg({ tipo: "erro", texto: erroDe(e) });
@@ -173,8 +191,9 @@ function Envio({ unidades, areas, temUnidades, onEnviado }: {
   return (
     <section className="bloco bloco--largo" aria-labelledby="t-envio">
       <div className="bloco-titulo">
-        <h2 id="t-envio">Enviar a planilha</h2>
+        <h3 id="t-envio">{onCancelar ? "Enviar nova versão" : "Enviar a planilha"}</h3>
         <p>CSV ou Excel, até 2 MB. Uma linha por obrigação.</p>
+        {onCancelar && <button type="button" className="link link-pequeno" onClick={onCancelar}>Cancelar</button>}
         <button type="button" className="link link-pequeno baixar-modelo" onClick={baixarModelo}>Baixar modelo (.csv)</button>
       </div>
 
@@ -316,42 +335,35 @@ function Criticidade({ valor }: { valor: string }) {
   return <span className="criticidade" data-nivel={valor}>{valor === "media" ? "média" : valor}</span>;
 }
 
-// ─────────────────────────── 2. processamento ───────────────────────────
+// ─────────────────────────── 2. planilha recebida + análise em segundo plano ───────────────────────────
 
-function Estado({ importacoes, processamento }: { importacoes: Importacao[] | null; processamento: Processamento }) {
-  const [, tique] = useState(0);
-  useEffect(() => {
-    if (processamento?.estado !== "RUNNING") return;
-    const t = setInterval(() => tique((n) => n + 1), 30000);
-    return () => clearInterval(t);
-  }, [processamento?.estado]);
-
-  if (importacoes === null) return null;
-  if (importacoes.length === 0) return null;
-
-  const p = processamento;
-  let estado: ReactNode = null;
+function Recebida({ importacoes, processamento: p, onNova }: { importacoes: Importacao[]; processamento: Processamento; onNova?: () => void }) {
+  const ultima = importacoes[0];
+  let status: ReactNode = null;
   if (p?.estado === "RUNNING") {
-    const m = minutos(p.inicio);
-    estado = <><span className="cnpj-girando" aria-hidden="true" /> Processando há {m} {m === 1 ? "minuto" : "minutos"} (leva de 7 a 15)</>;
-  } else if (p?.estado === "SUCCEEDED") estado = <>✓ Processada em {dataHora(p.fim)}</>;
-  else if (p) estado = <>O último processamento falhou ({p.estado.toLowerCase()}). Ele roda de novo sozinho em até 1 hora.</>;
-
+    status = <><span className="cnpj-girando" aria-hidden="true" /><span>
+      Analisando o perfil da empresa e cruzando a matriz com as normas. Roda em segundo plano: você pode seguir.
+      O resultado aparece aqui quando ficar pronto.</span></>;
+  } else if (p?.estado === "SUCCEEDED") {
+    status = <span>Análise concluída em {dataHora(p.fim)}.</span>;
+  } else if (p) {
+    status = <span>A análise não terminou desta vez. Ela roda de novo sozinha em até 1 hora; não precisa enviar outra vez.</span>;
+  }
   return (
-    <section className="bloco bloco--largo" aria-labelledby="t-estado">
-      <div className="bloco-titulo"><h2 id="t-estado">Envios</h2><p>As planilhas que já subiram.</p></div>
-      <div className="estado">
-        {estado && <p className="estado-linha" data-estado={p?.estado} aria-live="polite">{estado}</p>}
-        <ul className="envios">
-          {importacoes.map((i) => (
-            <li key={i.arquivo}>
-              <span className="envio-nome">{nomeOriginal(i.arquivo)}</span>
-              <span className="envio-meta k-mono">{dataHora(i.enviado_em)} · {tamanho(i.tamanho)}</span>
-            </li>
-          ))}
-        </ul>
+    <div className="recebida" data-estado={p?.estado}>
+      <div className="recebida-topo">
+        <div className="recebida-titulo">
+          <span className="etapa-ok" aria-hidden="true">✓</span>
+          <strong>Planilha recebida</strong>
+          <span className="envio-meta k-mono">{nomeOriginal(ultima.arquivo)} · {dataHora(ultima.enviado_em)}</span>
+        </div>
+        {onNova && <button type="button" className="link link-pequeno" onClick={onNova}>Enviar nova versão</button>}
       </div>
-    </section>
+      {status && <p className="recebida-status" aria-live="polite">{status}</p>}
+      {importacoes.length > 1 && (
+        <p className="recebida-historico">Versões anteriores: {importacoes.slice(1, 4).map((i) => `${nomeOriginal(i.arquivo)} (${dataHora(i.enviado_em)})`).join(" · ")}</p>
+      )}
+    </div>
   );
 }
 

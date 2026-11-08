@@ -94,8 +94,21 @@ Empresa de referência a partir de 07/11: **Light SESA, CNPJ 60.444.437/0001-46*
   consulta sai sozinha. CNPJ que já tem dono → "Este CNPJ já foi cadastrado por outra pessoa da empresa. Peça a ela um
   convite para a equipe."
 - **Consultando:** "Lendo o CNPJ na Receita" com os segundos.
-- **Conferência dos dados** (no lugar do formulário): cartão grafite (razão social, CNPJ, cidade/UF, ano de início,
-  "Trocar CNPJ") e "Confira os dados da empresa", só com o que o Kalman usa para decidir quais normas valem. Tudo vem
+
+**Com a empresa cadastrada, o painel é uma página só, em três etapas liberadas uma de cada vez** (componente `Fluxo`,
+indicador de etapas no topo): **1. Dados da empresa** → **2. Matriz de obrigações** → **3. Equipe (opcional)**. A ideia
+é a pessoa fazer uma coisa de cada vez; o que ainda não faz sentido aparece bloqueado, com o motivo.
+
+- Etapa 1 começa aberta. **Confirmar dados** fica no fim da conferência (não é mais barra fixa). Ao confirmar, a etapa
+  vira um resumo ("✓ … conferidos em … por …", com "Rever os dados") e a página desce para a etapa 2.
+- Etapa 2 fica bloqueada até a confirmação. Quando a planilha é recebida, a etapa conta como feita na hora (a análise
+  não prende ninguém) e a página desce para a etapa 3. Quem não tem a planilha pode "Pular esta etapa" (lembrado no
+  navegador, por CNPJ).
+- Etapa 3 fica bloqueada até a matriz ser enviada ou pulada.
+- Membro: as três etapas liberadas e só leitura.
+- `/painel/matriz` abre a mesma página já na etapa 2.
+- **Etapa 1 · Conferência dos dados** (no lugar do formulário): cartão grafite (razão social, CNPJ, cidade/UF, ano de
+  início, "Trocar CNPJ"), só com o que o Kalman usa para decidir quais normas valem. Tudo vem
   da Receita e **não se edita** aqui; se estiver errado, corrige-se na Receita e "consulte de novo" refaz a consulta.
   - **Identificação:** razão social, nome fantasia (se houver), CNPJ, matriz/filial, natureza jurídica, porte,
     situação na Receita (e desde quando), início das atividades.
@@ -104,27 +117,26 @@ Empresa de referência a partir de 07/11: **Light SESA, CNPJ 60.444.437/0001-46*
   - **Onde atua:** sede (da Receita) e **Estados onde atua**, o único dado nosso: grade das 27 UFs, a sede marcada e
     fixa, as outras se marcam com um clique.
   - **Regime tributário:** Simples Nacional / MEI (ou "não optante").
-  - Rodapé: "Os dados conferem?" + **Confirmar dados**. Grava em `dados` (PATCH `/cadastro/me`, que aceita campos
-    livres): `conferido_em`, `conferido_por` (e-mail) e `ufs_atuacao` ("RJ,SP"). Depois mostra "Conferido em … por …";
-    o botão volta como "Salvar estados" se os estados mudarem.
+  - No fim: "Os dados conferem?" + **Confirmar dados**. Grava em `dados` (PATCH `/cadastro/me`): `conferido_em`,
+    `conferido_por` (e-mail), `conferido_por_nome` e `ufs_atuacao` (lista: `["RJ", "SP"]`), campos aceitos por
+    `perfil.py`. Revendo os dados depois, o botão volta como "Salvar estados" se os estados mudarem.
   - Fora da tela, de propósito: contato (e-mail, telefone), endereço detalhado, capital social e sócios. O antigo
     formulário (`src/campos.ts`: responsável, contato, endereço) não é mais usado pela tela.
 - **Membro:** a mesma conferência, só leitura (sem Confirmar, sem Trocar CNPJ, sem "consulte de novo"), com o aviso
   "Você é membro desta empresa: vê os dados, mas quem confirma é quem criou a conta."
-- **Equipe:** lista de e-mails, sem selos de papel; "(você)" na própria linha e "Convite pendente até dd/mm/aaaa" nos
+- **Etapa 3 · Equipe:** lista de e-mails, sem selos de papel; "(você)" na própria linha e "Convite pendente até dd/mm/aaaa" nos
   convites. Quem criou a conta convida pelo e-mail, remove membros e cancela convites; o membro pode sair da empresa. O
   convite **não envia e-mail** (é assim na API): a tela avisa para combinar com a pessoa.
 
-- **Sua conta:** nome editável (atributo `name` do Cognito, via `updateUserAttribute`) e o e-mail de acesso. Contas
-  criadas antes do campo de nome veem "Falta o seu nome". A barra do topo mostra o nome (o e-mail fica no tooltip) e a
-  conferência grava `conferido_por_nome` junto com o e-mail.
+- A seção "Sua conta" (editar o nome) saiu do painel em 08/11. O nome vem do cadastro (atributo `name` do Cognito); a
+  barra do topo mostra o nome, com o e-mail no tooltip.
 
 ### Onde fica o nome da pessoa
 No **Cognito** (atributo padrão `name`: já existe no pool, opcional e editável; o app client não restringe atributos),
 sem mudança na stack. O DynamoDB não tem dados da pessoa (só o vínculo usuário → CNPJ e papel) e a API não tem rota
 para isso. Para a lista da Equipe mostrar nomes, a API teria de ler o `name` no Cognito, como já lê o e-mail.
 
-### 3. Matriz de obrigações (`/painel/matriz`, aba "Matriz")
+### 3. Etapa 2 · Matriz de obrigações
 A planilha que a empresa já usa vira obrigações com prazo calculado e tarefas com data (job `pipeline/matriz`). É a
 base do dashboard. Arquivos: `src/TelaMatriz.tsx` (tela), `src/planilha.ts` (leitura e conferência do CSV),
 `src/matriz.ts` (cliente da API, do Gabriel, com `getImportacoes` e `importarMatriz`).
@@ -135,11 +147,18 @@ base do dashboard. Arquivos: `src/TelaMatriz.tsx` (tela), `src/planilha.ts` (lei
   existem no perfil, IDs repetidos. A prévia mostra primeiro as linhas com erro, com o motivo. Linhas com erro ficam
   de fora; sem nenhuma válida (ou sem as colunas obrigatórias), o envio fica bloqueado. O `.xlsx` não tem prévia: é
   conferido no processamento. "Colunas da planilha" explica cada coluna e dá exemplos de `prazo_json`.
-- **Envios:** arquivos já enviados e o estado do último processamento ("Processando há N minutos (leva de 7 a 15)" →
-  "Processada em …"). A tela consulta de novo a cada 15 s enquanto processa.
-- **Obrigações:** as vigentes, vindas de `GET /obrigacoes` (ID, título, órgão, criticidade); um clique abre prazo,
-  recorrência, fonte (com link), trecho, área, evidência e versão.
-- Membro: vê envios e obrigações, sem a área de envio.
+- **Planilha recebida:** depois do envio, a área de envio vira um cartão com o arquivo, a data e "Enviar nova versão".
+  A análise roda **em segundo plano**: "Analisando o perfil da empresa e cruzando a matriz com as normas. Você pode
+  seguir…". A tela confere de novo a cada 30 s, sem prender ninguém. Falha → "roda de novo sozinha em até 1 hora".
+  Por que demora: o job da matriz (Step Functions + Glue) tem 4 etapas (Perfis, Bronze, Silver, Gold), cada uma sobe
+  uma máquina do Glue, que aceita uma execução por vez; 7 a 15 min, mais se coincidir com a rodada de hora em hora.
+  O aviso no dashboard e o e-mail de conclusão ficam para o dashboard.
+- **Obrigações:** só aparecem **depois** que a análise termina (antes, nada para navegar). As vigentes, vindas de
+  `GET /obrigacoes` (ID, título, órgão, criticidade); um clique abre prazo, recorrência, fonte (com link), trecho,
+  área, evidência e versão.
+- Membro: vê a planilha recebida e as obrigações, sem a área de envio.
+- Planilha de exemplo da Ampla (Enel Distribuição Rio): `pipeline/matriz/fixtures/ampla/matriz.csv`, 25 obrigações,
+  `aplica_a` e área vazios (a Ampla não tem unidades nem áreas no perfil); passa inteira na conferência.
 - Conferido com a planilha da Aurora (`pipeline/matriz/fixtures/aurora/matriz.csv`): 22 de 22 válidas com as
   unidades do perfil dela; com o perfil da Light (sem unidades), 1 de 22, porque as outras citam `UN-xx` em `aplica_a`.
 - **Lacuna:** a tela não tem onde cadastrar as unidades, as áreas e as outorgas do perfil (o formulário de teste do

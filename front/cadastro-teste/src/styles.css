@@ -401,3 +401,58 @@ code { font-family: var(--k-fonte-mono); font-size: 0.9em; background: var(--k-c
 .bloco--largo .bloco-titulo p { margin-top: 0; }
 .bloco--largo .baixar-modelo { margin-top: 0; margin-left: auto; }
 .tabela td .k-mono { white-space: nowrap; }
+.bloco-titulo h3 { font-size: 1.1rem; letter-spacing: -0.02em; line-height: 1.3; }
+
+/* ══════════════ fluxo do painel: uma página, uma etapa de cada vez ══════════════ */
+.fluxo { display: grid; gap: clamp(2.5rem, 5vw, 3.5rem); }
+
+.passos { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .75rem;
+  counter-reset: none; }
+.passo { display: flex; align-items: center; gap: .6rem; padding-top: .75rem; border-top: 2px solid var(--k-linha); color: var(--k-tinta-3); font-size: var(--k-t-pequeno); }
+.passo-numero { flex: none; width: 1.6rem; height: 1.6rem; display: grid; place-items: center; border-radius: 50%;
+  font: 500 .78rem var(--k-fonte-mono); box-shadow: inset 0 0 0 1px var(--k-linha-forte); color: var(--k-tinta-3); }
+.passo-nome { font-weight: 500; }
+.passo-opcional { font-weight: 400; color: var(--k-tinta-3); }
+.passo[data-estado="atual"] { border-top-color: var(--k-laranja); color: var(--k-grafite); }
+.passo[data-estado="atual"] .passo-numero { background: var(--k-laranja); color: var(--k-branco); box-shadow: none; }
+.passo[data-estado="feito"] { border-top-color: var(--k-grafite); color: var(--k-grafite); }
+.passo[data-estado="feito"] .passo-numero { background: var(--k-grafite); color: var(--k-branco); box-shadow: none; font-family: var(--k-fonte); }
+.passo[data-estado="bloqueado"] { opacity: .55; }
+@media (max-width: 600px) {
+  .passos { gap: .5rem; }
+  .passo { flex-direction: column; align-items: flex-start; gap: .35rem; font-size: .78rem; }
+}
+
+.etapa { display: grid; gap: 1.5rem; scroll-margin-top: 6rem; }
+.etapa + .etapa { border-top: 1px solid var(--k-linha); padding-top: clamp(2rem, 4vw, 3rem); }
+.etapa-cabeca { display: flex; align-items: baseline; gap: .9rem; }
+.etapa-cabeca h2 { font-size: clamp(1.6rem, 3vw, 2.1rem); }
+.etapa-numero { color: var(--k-laranja); font-size: .9rem; font-weight: 500; }
+.etapa-numero[data-feito] { color: var(--k-tinta-3); }
+.etapa-opcional { font-weight: 400; color: var(--k-tinta-3); font-size: .6em; letter-spacing: 0; }
+.etapa[data-bloqueada] .etapa-cabeca { opacity: .45; }
+.etapa-bloqueio { margin: 0; padding: 1rem 1.1rem; border: 1px dashed var(--k-linha-forte); border-radius: var(--k-raio-card); color: var(--k-tinta-3); font-size: var(--k-t-pequeno); }
+.etapa-apoio { color: var(--k-tinta-2); max-width: 62ch; }
+.etapa-ok { color: var(--k-grafite); font-weight: 600; }
+.etapa-resumo { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap;
+  padding: 1rem 1.1rem; border-radius: var(--k-raio-card); background: var(--k-ceu-claro); color: var(--k-tinta-2); font-size: .95rem; }
+.etapa-fechar { justify-self: start; }
+
+/* botão de confirmar no fim da conferência (não fica preso na tela) */
+.confirmar { display: flex; justify-content: flex-end; align-items: center; gap: 1rem; flex-wrap: wrap;
+  padding-top: 1.5rem; margin-top: .5rem; border-top: 1px solid var(--k-linha); }
+.confirmar .k-btn { min-width: 12rem; }
+
+/* matriz: planilha recebida + análise em segundo plano */
+.recebida { display: grid; gap: .75rem; padding: 1.1rem 1.25rem; border: 1px solid var(--k-linha); border-radius: var(--k-raio-card); }
+.recebida-topo { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; }
+.recebida-titulo { display: flex; align-items: baseline; gap: .5rem; flex-wrap: wrap; }
+.recebida-status { display: flex; align-items: flex-start; gap: .55rem; margin: 0; padding: .75rem 1rem; border-radius: var(--k-raio-controle);
+  background: var(--k-ceu-claro); color: var(--k-tinta-2); font-size: var(--k-t-pequeno); }
+.recebida-status .cnpj-girando { margin-top: .2rem; }
+.recebida[data-estado="FAILED"] .recebida-status, .recebida[data-estado="TIMED_OUT"] .recebida-status,
+.recebida[data-estado="ABORTED"] .recebida-status { background: rgb(184 50 26 / .08); color: var(--k-erro); }
+.recebida-historico { color: var(--k-tinta-3); font-size: .8rem; }
+.pular { color: var(--k-tinta-3); font-size: var(--k-t-pequeno); }
+.etapa-opcional { margin-left: .45rem; }
+.matriz > .bloco { border-top: 0; padding-top: 0; }

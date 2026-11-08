@@ -11,7 +11,7 @@ import {
   updateUserAttribute,
 } from "aws-amplify/auth";
 import { startTransition, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
-import { Link, Navigate, NavLink, Route, Routes, useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, Navigate, Route, Routes, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import * as apiReal from "./api";
 import Landing from "./landing/Landing";
 import { Privacidade, Termos } from "./landing/Legal";
@@ -455,10 +455,12 @@ function Painel({ email, onSair }: { email: string; onSair: () => void }) {
   const [erro, setErro] = useState("");
   /** Nome da pessoa (atributo `name` do Cognito); "" = conta criada antes do campo existir. */
   const [meuNome, setMeuNome] = useState<string | undefined>(undefined);
+  // (a edição do nome saiu do painel; o nome vem do cadastro da conta)
   const iniciou = useRef(false);
 
   useEffect(() => { auth.lerNome().then(setMeuNome).catch(() => setMeuNome("")); }, []);
-  const secao = useLocation().pathname.startsWith("/painel/matriz") ? "matriz" : "empresa";
+  // /painel/matriz abre a mesma página, já na etapa da matriz (links antigos e atalhos)
+  const foco = useLocation().pathname.startsWith("/painel/matriz") ? "matriz" : undefined;
 
   async function consultar(cnpj: string, consultadoAntes: string | null = cadastro?.consultado_em ?? null) {
     setErro("");
@@ -501,16 +503,15 @@ function Painel({ email, onSair }: { email: string; onSair: () => void }) {
   }, []);
 
   const nomeEmpresa = cadastro?.empresa?.nome_fantasia || cadastro?.empresa?.razao_social;
-  useEffect(() => { document.title = secao === "matriz" ? "Kalman · Matriz" : "Kalman · Painel"; }, [secao]);
+  useEffect(() => { document.title = "Kalman · Painel"; }, []);
   let corpo: ReactNode;
   if (cadastro === undefined) corpo = <div className="centro-area"><Carregando /></div>;
   else if (consultando) corpo = <Consultando />;
   else if (!cadastro && convite) corpo = <ConviteRecebido convite={convite} onAceito={() => carregar()} onRecusado={() => setConvite(null)} />;
   else if (!cadastro || trocando) corpo = <PedirCnpj erro={erro} onConsultar={(c) => consultar(c)} onCancelar={cadastro ? () => { setTrocando(false); setErro(""); } : undefined} />;
-  else if (secao === "matriz") corpo = <TelaMatriz cadastro={cadastro} />;
   else corpo = (
-    <Dados cadastro={cadastro} email={email} meuNome={meuNome ?? ""} onNome={setMeuNome} onSalvo={setCadastro} onTrocar={() => setTrocando(true)}
-      onReconsultar={() => cadastro.cnpj && consultar(cadastro.cnpj)}
+    <Fluxo key={cadastro.cnpj} cadastro={cadastro} email={email} meuNome={meuNome ?? ""} foco={foco} onSalvo={setCadastro}
+      onTrocar={() => setTrocando(true)} onReconsultar={() => cadastro.cnpj && consultar(cadastro.cnpj)}
       onSaiu={() => { setCadastro(null); carregar().catch(() => undefined); }} />
   );
 
@@ -525,12 +526,6 @@ function Painel({ email, onSair }: { email: string; onSair: () => void }) {
             <button className="k-btn k-btn--contorno k-btn--sm" type="button" onClick={onSair}>Sair</button>
           </div>
         </div>
-        {cadastro && !consultando && !trocando && (
-          <nav className="abas" aria-label="Seções do painel">
-            <NavLink to="/painel" end className="aba">Empresa</NavLink>
-            <NavLink to="/painel/matriz" className="aba">Matriz</NavLink>
-          </nav>
-        )}
       </header>
       <main className="painel-corpo">{corpo}</main>
     </div>
@@ -656,9 +651,9 @@ function regimeTributario(e: Empresa) {
 /** A Receita chama de "Demais" quem não é ME nem EPP. */
 const porte = (p: string) => (p.toLowerCase() === "demais" ? "Demais (não é ME nem EPP)" : p);
 
-function Dados({ cadastro, email, meuNome, onNome, onSalvo, onTrocar, onReconsultar, onSaiu }: {
-  cadastro: Cadastro; email: string; meuNome: string; onNome: (nome: string) => void; onSalvo: (c: Cadastro) => void;
-  onTrocar: () => void; onReconsultar: () => void; onSaiu: () => void;
+function Dados({ cadastro, email, meuNome, onSalvo, onTrocar, onReconsultar, onConfirmado }: {
+  cadastro: Cadastro; email: string; meuNome: string; onSalvo: (c: Cadastro) => void;
+  onTrocar: () => void; onReconsultar: () => void; onConfirmado: () => void;
 }) {
   const e = cadastro.empresa;
   const leitura = cadastro.papel === "membro";
@@ -692,6 +687,7 @@ function Dados({ cadastro, email, meuNome, onNome, onSalvo, onTrocar, onReconsul
         conferido_em: new Date().toISOString(), conferido_por: email, conferido_por_nome: meuNome || null, ufs_atuacao: ordenadas,
       }));
       setMsg({ tipo: "ok", texto: "Dados confirmados." });
+      onConfirmado();
     } catch (err) {
       setMsg({ tipo: "erro", texto: mensagemDeErro(err) });
     } finally {
@@ -731,7 +727,6 @@ function Dados({ cadastro, email, meuNome, onNome, onSalvo, onTrocar, onReconsul
       </section>
 
       <div className="conferencia-cabeca">
-        <h2>Confira os dados da empresa</h2>
         <p>
           Vieram da Receita Federal{cadastro.consultado_em ? <> em <span className="k-mono">{dataHoraBR(cadastro.consultado_em)}</span></> : null}.
           É com eles que o Kalman decide quais normas valem para a empresa.
@@ -791,7 +786,7 @@ function Dados({ cadastro, email, meuNome, onNome, onSalvo, onTrocar, onReconsul
           <p className="regime">{regimeTributario(e)}</p>
         </section>
 
-        <div className="salvar">
+        <div className="confirmar">
           {msg ? (
             <span className={`salvar-msg ${msg.tipo}`} role="status">{msg.texto}</span>
           ) : conferidoEm ? (
@@ -809,58 +804,114 @@ function Dados({ cadastro, email, meuNome, onNome, onSalvo, onTrocar, onReconsul
         </div>
       </form>
 
-      <Equipe key={cadastro.cnpj} cadastro={cadastro} onSaiu={onSaiu} />
-
-      <SuaConta email={email} nome={meuNome} onNome={onNome} />
     </div>
   );
 }
 
-// ─────────────────────────── sua conta: nome (Cognito) ───────────────────────────
+// ─────────────────────────── fluxo do painel: uma página, uma etapa de cada vez ───────────────────────────
+//
+//   1. Dados da empresa      conferir e confirmar (o botão fica no fim)
+//   2. Matriz de obrigações  liberada depois da confirmação; envio da planilha, análise em segundo plano
+//   3. Equipe (opcional)     liberada depois do envio da matriz (ou de "Pular esta etapa")
+//
+// Membro vê tudo liberado e só leitura: quem faz as etapas é quem criou a conta.
 
-function SuaConta({ email, nome, onNome }: { email: string; nome: string; onNome: (nome: string) => void }) {
-  const [valor, setValor] = useState(nome);
-  const [salvando, setSalvando] = useState(false);
-  const [msg, setMsg] = useState<{ tipo: "ok" | "erro"; texto: string } | null>(null);
-  useEffect(() => setValor(nome), [nome]);
-  const limpo = limparNome(valor);
-  const mudou = limpo !== nome;
+type EstadoMatriz = "carregando" | "sem_envio" | "enviada";
 
-  async function salvar(e: FormEvent) {
-    e.preventDefault();
-    if (!nomeValido(valor)) { setMsg({ tipo: "erro", texto: "Digite seu nome." }); return; }
-    setSalvando(true); setMsg(null);
-    try {
-      await auth.salvarNome(limpo);
-      onNome(limpo);
-      setMsg({ tipo: "ok", texto: "Nome salvo." });
-    } catch (err) {
-      setMsg({ tipo: "erro", texto: mensagemDeErro(err) });
-    } finally {
-      setSalvando(false);
-    }
+function Fluxo({ cadastro, email, meuNome, foco, onSalvo, onTrocar, onReconsultar, onSaiu }: {
+  cadastro: Cadastro; email: string; meuNome: string; foco?: "matriz";
+  onSalvo: (c: Cadastro) => void; onTrocar: () => void; onReconsultar: () => void; onSaiu: () => void;
+}) {
+  const leitura = cadastro.papel === "membro";
+  const d = cadastro.dados;
+  const conferido = !!texto(d.conferido_em);
+  const [verEmpresa, setVerEmpresa] = useState(!conferido);
+  const [matriz, setMatriz] = useState<EstadoMatriz>("carregando");
+  const chavePulo = `kalman:pulou-matriz:${cadastro.cnpj}`;
+  const [pulou, setPulou] = useState(() => { try { return localStorage.getItem(chavePulo) === "1"; } catch { return false; } });
+  const etapaMatriz = useRef<HTMLElement>(null);
+  const etapaEquipe = useRef<HTMLElement>(null);
+
+  const matrizLiberada = leitura || conferido;
+  const matrizFeita = matriz === "enviada";
+  const equipeLiberada = leitura || (conferido && (matrizFeita || pulou));
+  const atual = leitura ? 0 : !conferido ? 1 : !(matrizFeita || pulou) ? 2 : 3;
+
+  const rolar = (ref: { current: HTMLElement | null }) =>
+    setTimeout(() => ref.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
+
+  useEffect(() => { if (foco === "matriz" && matrizLiberada) rolar(etapaMatriz); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  function pular() {
+    try { localStorage.setItem(chavePulo, "1"); } catch { /* sem storage: vale só nesta visita */ }
+    setPulou(true);
+    rolar(etapaEquipe);
   }
 
+  const quem = texto(d.conferido_por_nome) || texto(d.conferido_por);
+
   return (
-    <section className="bloco conta" aria-labelledby="t-conta">
-      <div className="bloco-titulo">
-        <h2 id="t-conta">Sua conta</h2>
-        <p>Aparece para a equipe e nos registros do que você conferir.</p>
-      </div>
-      <form className="conta-corpo" onSubmit={salvar} noValidate>
-        {!nome && <p className="nota-leitura"><span className="k-ponto" aria-hidden="true" /> Falta o seu nome.</p>}
-        <div className="k-campo">
-          <label htmlFor="meu-nome">Seu nome</label>
-          <div className="convidar-linha">
-            <input id="meu-nome" value={valor} onChange={(e) => { setValor(e.target.value); setMsg(null); }} autoComplete="name"
-              placeholder="Nome e sobrenome" aria-invalid={msg?.tipo === "erro" || undefined} />
-            <button className="k-btn k-btn--grafite" type="submit" disabled={salvando || !mudou}>{salvando ? "Salvando…" : "Salvar"}</button>
+    <div className="fluxo">
+      <ol className="passos" aria-label="Etapas">
+        <Passo n={1} nome="Dados da empresa" estado={conferido ? "feito" : atual === 1 ? "atual" : "livre"} />
+        <Passo n={2} nome="Matriz de obrigações" estado={matrizFeita ? "feito" : atual === 2 ? "atual" : matrizLiberada ? "livre" : "bloqueado"} />
+        <Passo n={3} nome="Equipe" opcional estado={atual === 3 ? "atual" : equipeLiberada ? "livre" : "bloqueado"} />
+      </ol>
+
+      <section className="etapa" aria-labelledby="t-etapa-1">
+        <CabecaEtapa id="t-etapa-1" n={1} titulo="Dados da empresa" feito={conferido} />
+        {conferido && !verEmpresa ? (
+          <div className="etapa-resumo">
+            <span><span className="etapa-ok" aria-hidden="true">✓</span> {titulo(cadastro.empresa.razao_social)} · conferidos em {dataHoraBR(texto(d.conferido_em))}{quem ? ` por ${quem}` : ""}</span>
+            <button type="button" className="link link-pequeno" onClick={() => setVerEmpresa(true)}>Rever os dados</button>
           </div>
-        </div>
-        <p className="conta-email">E-mail de acesso: <strong>{email}</strong></p>
-        {msg && <p className={`msg ${msg.tipo === "erro" ? "msg-erro" : "msg-info"}`} role={msg.tipo === "erro" ? "alert" : "status"}>{msg.texto}</p>}
-      </form>
-    </section>
+        ) : (
+          <>
+            <Dados cadastro={cadastro} email={email} meuNome={meuNome} onSalvo={onSalvo} onTrocar={onTrocar} onReconsultar={onReconsultar}
+              onConfirmado={() => { if (!conferido) { setVerEmpresa(false); rolar(etapaMatriz); } }} />
+            {conferido && <button type="button" className="link link-pequeno etapa-fechar" onClick={() => setVerEmpresa(false)}>Recolher os dados</button>}
+          </>
+        )}
+      </section>
+
+      <section ref={etapaMatriz} className="etapa" aria-labelledby="t-etapa-2" data-bloqueada={!matrizLiberada || undefined}>
+        <CabecaEtapa id="t-etapa-2" n={2} titulo="Matriz de obrigações" feito={matrizFeita} />
+        {matrizLiberada ? (
+          <TelaMatriz cadastro={cadastro}
+            onEnvio={(enviada, porAcao) => { setMatriz(enviada ? "enviada" : "sem_envio"); if (porAcao) rolar(etapaEquipe); }}
+            onPular={!leitura && !pulou && !matrizFeita && matriz !== "carregando" ? pular : undefined} />
+        ) : (
+          <p className="etapa-bloqueio">Confirme os dados da empresa para enviar a matriz.</p>
+        )}
+      </section>
+
+      <section ref={etapaEquipe} className="etapa" aria-labelledby="t-etapa-3" data-bloqueada={!equipeLiberada || undefined}>
+        <CabecaEtapa id="t-etapa-3" n={3} titulo="Equipe" opcional />
+        {equipeLiberada ? (
+          <Equipe key={cadastro.cnpj} cadastro={cadastro} onSaiu={onSaiu} />
+        ) : (
+          <p className="etapa-bloqueio">Depois da matriz, você convida quem precisa acompanhar as normas.</p>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function Passo({ n, nome, estado, opcional }: { n: number; nome: string; estado: "feito" | "atual" | "livre" | "bloqueado"; opcional?: boolean }) {
+  return (
+    <li className="passo" data-estado={estado} aria-current={estado === "atual" ? "step" : undefined}>
+      <span className="passo-numero">{estado === "feito" ? "✓" : n}</span>
+      <span className="passo-nome">{nome}{opcional && <span className="passo-opcional"> (opcional)</span>}</span>
+    </li>
+  );
+}
+
+function CabecaEtapa({ id, n, titulo: nome, feito, opcional }: { id: string; n: number; titulo: string; feito?: boolean; opcional?: boolean }) {
+  return (
+    <div className="etapa-cabeca">
+      <span className="etapa-numero k-mono" data-feito={feito || undefined}>{String(n).padStart(2, "0")}</span>
+      <h2 id={id}>{nome}{opcional && <span className="etapa-opcional"> · opcional</span>}</h2>
+    </div>
   );
 }
 
@@ -898,12 +949,8 @@ function Equipe({ cadastro, onSaiu }: { cadastro: Cadastro; onSaiu: () => void }
   }
 
   return (
-    <section className="bloco equipe" aria-labelledby="t-equipe">
-      <div className="bloco-titulo">
-        <h2 id="t-equipe">Equipe</h2>
-        <p>{souDono ? "Quem vê os dados e os alertas desta empresa." : "Quem acompanha esta empresa."}</p>
-      </div>
-      <div className="equipe-corpo">
+    <div className="equipe-corpo">
+      <p className="etapa-apoio">{souDono ? "Quem vê os dados e os alertas desta empresa. Convide quem precisa acompanhar as normas." : "Quem acompanha esta empresa."}</p>
         {!org && !msg && <Carregando />}
         {org && (
           <ul className="equipe-lista">
@@ -962,8 +1009,7 @@ function Equipe({ cadastro, onSaiu }: { cadastro: Cadastro; onSaiu: () => void }
         )}
 
         {msg && <p className={`msg ${msg.tipo === "erro" ? "msg-erro" : "msg-info"}`} role={msg.tipo === "erro" ? "alert" : "status"}>{msg.texto}</p>}
-      </div>
-    </section>
+    </div>
   );
 }
 
