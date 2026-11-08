@@ -395,3 +395,14 @@ def test_aprovacao_entra_na_linha_do_tempo_com_o_ato_e_fecha_a_vigencia(api):
     assert [(o["obrigacao_id"], o["versao"]) for o in antes] == [("OBR-009", 1), ("OBR-013", 1)]
     assert [(o["obrigacao_id"], o["versao"]) for o in depois] == [("OBR-009", 1), ("OBR-013", 2)]
     assert chamar(api, "dono", "GET /obrigacoes", query={"em": "05/11/2026"})[0] == 400
+
+
+def test_erro_do_athena_nao_vaza_detalhe(api, monkeypatch, caplog):
+    segredo = "SYNTAX_ERROR: line 1:8: Column 'gold_db.matriz_obrigacoes.x' cannot be resolved"
+    def falha(q):
+        raise athena.ErroAthena(segredo)
+    monkeypatch.setattr(athena, "consultar", falha)
+    code, body = chamar(api, "dono", "GET /tarefas")
+    assert code == 502 and body == {"erro": "não foi possível consultar a matriz agora, tente de novo"}
+    assert "gold_db" not in json.dumps(body)
+    assert segredo in caplog.text   # o motivo continua no log, para quem opera

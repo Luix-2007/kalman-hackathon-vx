@@ -315,5 +315,6 @@ def handler(event, context=None):
     except sql.ValorInvalido as exc:
         return resp(400, {"erro": str(exc)})
     except athena.ErroAthena as exc:
+        # o motivo (nomes de tabela, trecho do SQL) fica só no log; o cliente recebe a mensagem genérica
         log.exception("erro no Athena")
-        return resp(502, {"erro": "não foi possível consultar a matriz agora, tente de novo", "detalhe": str(exc)[:300]})
+        return resp(502, {"erro": "não foi possível consultar a matriz agora, tente de novo"})
