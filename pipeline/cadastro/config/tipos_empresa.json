@@ -1,0 +1,316 @@
+{
+  "versao": "2026-11-08.2",
+  "observacao": "Tipos de empresa para a classificação por embedding (etl.py: embeddings e classificar) e para as consultas do passo de propostas do DOU (ia/propostas). A classificação usa descricao e exemplos; as propostas usam orgaos, temas e consultas. Mudar a versao refaz os vetores de referência.",
+  "tipos": [
+    {
+      "id": "distribuidora_energia",
+      "nome": "Distribuidora de energia elétrica",
+      "descricao": "Concessionária ou permissionária de serviço público de distribuição de energia elétrica, que opera redes de média e baixa tensão, atende consumidores cativos e é regulada pela ANEEL.",
+      "exemplos": [
+        "Distribuição de energia elétrica",
+        "Concessionária de serviço público de distribuição de energia elétrica",
+        "Construção de estações e redes de distribuição de energia elétrica",
+        "Manutenção de redes de distribuição de energia elétrica",
+        "Atividade principal: Distribuição de energia elétrica. Atividades secundárias: Geração de energia elétrica; Comércio atacadista de energia elétrica.",
+        "Distribuidora de energia elétrica integrada, com geração própria e comercialização de energia"
+      ],
+      "orgaos": [
+        "ANEEL",
+        "ONS",
+        "CCEE"
+      ],
+      "temas": [
+        "qualidade_do_servico",
+        "tarifas",
+        "contabilidade_regulatoria"
+      ],
+      "consultas": [
+        "obrigações das concessionárias de distribuição de energia elétrica perante a ANEEL",
+        "indicadores de continuidade DEC e FEC e procedimentos de distribuição PRODIST",
+        "revisão e reajuste tarifário de distribuidora de energia elétrica",
+        "contabilidade regulatória do setor elétrico e demonstrações contábeis regulatórias",
+        "fiscalização técnica e penalidades a distribuidoras de energia elétrica"
+      ]
+    },
+    {
+      "id": "geradora_hidreletrica",
+      "nome": "Geradora hidrelétrica (UHE, PCH ou CGH)",
+      "descricao": "Empresa que gera energia elétrica em usina hidrelétrica, pequena central hidrelétrica ou central geradora hidrelétrica, com reservatório ou barragem e uso de recursos hídricos.",
+      "exemplos": [
+        "Geração de energia elétrica",
+        "Pequena central hidrelétrica",
+        "Operação de usina hidrelétrica e de barragem",
+        "Geração de energia elétrica de origem hídrica"
+      ],
+      "orgaos": [
+        "ANEEL",
+        "ONS",
+        "ANA"
+      ],
+      "temas": [
+        "seguranca_barragens",
+        "recursos_hidricos",
+        "licenciamento_ambiental"
+      ],
+      "consultas": [
+        "segurança de barragens de usinas hidrelétricas e plano de segurança da barragem",
+        "outorga de direito de uso de recursos hídricos para geração hidrelétrica",
+        "autorização e implantação de pequena central hidrelétrica PCH",
+        "compensação financeira pela utilização de recursos hídricos",
+        "excludentes de responsabilidade e cronograma de implantação de usina"
+      ]
+    },
+    {
+      "id": "geradora_renovavel",
+      "nome": "Geradora eólica, solar ou de biomassa",
+      "descricao": "Empresa que gera energia elétrica a partir de fonte eólica, solar fotovoltaica ou biomassa, em usinas autorizadas pela ANEEL.",
+      "exemplos": [
+        "Geração de energia elétrica de origem eólica",
+        "Geração de energia elétrica de origem solar fotovoltaica",
+        "Geração de energia elétrica a partir de biomassa",
+        "Implantação e operação de parque eólico"
+      ],
+      "orgaos": [
+        "ANEEL",
+        "ONS",
+        "CCEE"
+      ],
+      "temas": [
+        "licenciamento_ambiental",
+        "tarifas"
+      ],
+      "consultas": [
+        "autorização de central geradora eólica ou fotovoltaica",
+        "outorga de autorização para exploração de usina de fonte renovável",
+        "desconto na tarifa de uso dos sistemas de transmissão e distribuição para fontes incentivadas",
+        "cronograma de implantação e operação comercial de usina"
+      ]
+    },
+    {
+      "id": "geradora_termica",
+      "nome": "Geradora termelétrica",
+      "descricao": "Empresa que gera energia elétrica em usina termelétrica a gás natural, óleo combustível, carvão ou outro combustível fóssil.",
+      "exemplos": [
+        "Geração de energia elétrica de origem térmica",
+        "Usina termelétrica a gás natural",
+        "Operação de central geradora termelétrica"
+      ],
+      "orgaos": [
+        "ANEEL",
+        "ONS",
+        "ANP",
+        "IBAMA"
+      ],
+      "temas": [
+        "licenciamento_ambiental",
+        "petroleo_e_gas"
+      ],
+      "consultas": [
+        "despacho de usinas termelétricas e custo variável unitário",
+        "autorização de usina termelétrica a gás natural",
+        "emissões atmosféricas e licenciamento ambiental de termelétricas"
+      ]
+    },
+    {
+      "id": "transmissora_energia",
+      "nome": "Transmissora de energia elétrica",
+      "descricao": "Concessionária de serviço público de transmissão de energia elétrica, que opera linhas e subestações da rede básica, remunerada pela receita anual permitida.",
+      "exemplos": [
+        "Transmissão de energia elétrica",
+        "Concessionária de transmissão de energia elétrica",
+        "Construção de linhas de transmissão e subestações de energia elétrica"
+      ],
+      "orgaos": [
+        "ANEEL",
+        "ONS"
+      ],
+      "temas": [
+        "tarifas",
+        "qualidade_do_servico"
+      ],
+      "consultas": [
+        "receita anual permitida de concessionárias de transmissão",
+        "reforços e melhorias em instalações de transmissão da rede básica",
+        "parcela variável por indisponibilidade de instalações de transmissão"
+      ]
+    },
+    {
+      "id": "comercializadora_energia",
+      "nome": "Comercializadora de energia elétrica",
+      "descricao": "Agente que compra e vende energia elétrica no mercado livre, registrado na Câmara de Comercialização de Energia Elétrica.",
+      "exemplos": [
+        "Comércio atacadista de energia elétrica",
+        "Comercialização de energia elétrica no mercado livre",
+        "Gestão de contratos de compra e venda de energia"
+      ],
+      "orgaos": [
+        "ANEEL",
+        "CCEE"
+      ],
+      "temas": [
+        "tarifas",
+        "societario"
+      ],
+      "consultas": [
+        "agentes da Câmara de Comercialização de Energia Elétrica e liquidação financeira",
+        "regras de comercialização de energia no ambiente de contratação livre",
+        "garantias financeiras e penalidades no mercado de curto prazo"
+      ]
+    },
+    {
+      "id": "saneamento",
+      "nome": "Saneamento e recursos hídricos",
+      "descricao": "Empresa de captação, tratamento e distribuição de água ou de coleta e tratamento de esgoto.",
+      "exemplos": [
+        "Captação, tratamento e distribuição de água",
+        "Gestão de redes de esgoto",
+        "Atividades relacionadas a esgoto"
+      ],
+      "orgaos": [
+        "ANA",
+        "IBAMA"
+      ],
+      "temas": [
+        "recursos_hidricos",
+        "licenciamento_ambiental"
+      ],
+      "consultas": [
+        "normas de referência para regulação dos serviços de saneamento básico",
+        "outorga de direito de uso de recursos hídricos"
+      ]
+    },
+    {
+      "id": "oleo_gas",
+      "nome": "Petróleo, gás natural e biocombustíveis",
+      "descricao": "Empresa de exploração, produção, refino, distribuição ou revenda de petróleo, gás natural, combustíveis e biocombustíveis, regulada pela ANP.",
+      "exemplos": [
+        "Extração de petróleo e gás natural",
+        "Comércio atacadista de combustíveis",
+        "Distribuição de gás natural canalizado",
+        "Fabricação de biocombustíveis"
+      ],
+      "orgaos": [
+        "ANP",
+        "IBAMA"
+      ],
+      "temas": [
+        "petroleo_e_gas",
+        "licenciamento_ambiental"
+      ],
+      "consultas": [
+        "autorização da ANP para exercício de atividade de distribuição de combustíveis",
+        "regulamentação de exploração e produção de petróleo e gás natural"
+      ]
+    },
+    {
+      "id": "mineracao",
+      "nome": "Mineração",
+      "descricao": "Empresa de pesquisa, lavra e beneficiamento de recursos minerais, com títulos minerários outorgados pela Agência Nacional de Mineração.",
+      "exemplos": [
+        "Extração de minerais metálicos",
+        "Extração de pedra, areia e argila",
+        "Pesquisa e lavra mineral"
+      ],
+      "orgaos": [
+        "ANM",
+        "IBAMA"
+      ],
+      "temas": [
+        "seguranca_barragens",
+        "licenciamento_ambiental"
+      ],
+      "consultas": [
+        "outorga de títulos minerários e autorização de pesquisa",
+        "segurança de barragens de rejeitos de mineração"
+      ]
+    },
+    {
+      "id": "telecomunicacoes",
+      "nome": "Telecomunicações",
+      "descricao": "Prestadora de serviços de telecomunicações, como telefonia, internet e comunicação multimídia, regulada pela Anatel.",
+      "exemplos": [
+        "Telecomunicações por fio",
+        "Serviço de comunicação multimídia",
+        "Provedores de acesso às redes de comunicações"
+      ],
+      "orgaos": [
+        "ANATEL"
+      ],
+      "temas": [
+        "telecomunicacoes"
+      ],
+      "consultas": [
+        "outorga de serviço de comunicação multimídia pela Anatel"
+      ]
+    },
+    {
+      "id": "instituicao_financeira",
+      "nome": "Instituição financeira",
+      "descricao": "Banco, cooperativa de crédito ou outra instituição financeira autorizada pelo Banco Central do Brasil.",
+      "exemplos": [
+        "Bancos múltiplos, com carteira comercial",
+        "Bancos comerciais",
+        "Cooperativas de crédito",
+        "Sociedades de crédito, financiamento e investimento"
+      ],
+      "orgaos": [
+        "BCB",
+        "CVM"
+      ],
+      "temas": [
+        "societario"
+      ],
+      "consultas": [
+        "resoluções do Conselho Monetário Nacional para instituições financeiras",
+        "normas do Banco Central do Brasil para bancos"
+      ]
+    },
+    {
+      "id": "industria",
+      "nome": "Indústria de transformação",
+      "descricao": "Empresa industrial que fabrica produtos a partir de matérias-primas, com operação fabril, obrigações trabalhistas de segurança e licenciamento ambiental.",
+      "exemplos": [
+        "Fabricação de produtos químicos",
+        "Fabricação de máquinas e equipamentos",
+        "Fabricação de produtos alimentícios",
+        "Metalurgia"
+      ],
+      "orgaos": [
+        "MTE",
+        "IBAMA",
+        "RFB"
+      ],
+      "temas": [
+        "seguranca_do_trabalho",
+        "licenciamento_ambiental"
+      ],
+      "consultas": [
+        "normas regulamentadoras de segurança e saúde no trabalho",
+        "licenciamento ambiental de atividades industriais"
+      ]
+    },
+    {
+      "id": "comercio_servicos",
+      "nome": "Comércio e serviços",
+      "descricao": "Empresa de comércio varejista ou atacadista ou de prestação de serviços, sem regulação setorial específica.",
+      "exemplos": [
+        "Comércio varejista de mercadorias em geral",
+        "Atividades de consultoria em gestão empresarial",
+        "Serviços de engenharia",
+        "Desenvolvimento de programas de computador"
+      ],
+      "orgaos": [
+        "RFB",
+        "MTE"
+      ],
+      "temas": [
+        "societario",
+        "seguranca_do_trabalho"
+      ],
+      "consultas": [
+        "obrigações tributárias acessórias de pessoas jurídicas perante a Receita Federal",
+        "escrituração fiscal digital e declarações à Receita Federal"
+      ]
+    }
+  ]
+}

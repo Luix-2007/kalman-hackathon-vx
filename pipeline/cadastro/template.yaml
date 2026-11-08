@@ -16,13 +16,14 @@ Parameters:
       Use isto enquanto o stack do cadastro ainda nao exporta o ARN.
 
       '
-  KnowledgeBaseId:
+  LimiarMin:
     Type: String
-    Default: ''
-    Description: Bedrock Knowledge Base a sincronizar no fim (vazio = pula a etapa)
-  DataSourceId:
+    Default: '0.30'
+    Description: "Score m\xEDnimo para a classifica\xE7\xE3o decidir um tipo (abaixo: indefinido, revisar)"
+  MargemMin:
     Type: String
-    Default: ''
+    Default: '0.02'
+    Description: "Margem m\xEDnima entre o primeiro e o segundo tipo (abaixo: indefinido, revisar)"
   AlertEmail:
     Type: String
     Default: ''
@@ -151,6 +152,37 @@ Resources:
         Description: "Iceberg - tabelas de neg\xF3cio"
     Metadata:
       SamResourceId: GoldDb
+  EmpresasVectorBucket:
+    Type: AWS::S3Vectors::VectorBucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      VectorBucketName:
+        Fn::Sub: ${AWS::StackName}-vectors
+    Metadata:
+      SamResourceId: EmpresasVectorBucket
+  EmpresasIndex:
+    Type: AWS::S3Vectors::Index
+    Properties:
+      VectorBucketArn:
+        Ref: EmpresasVectorBucket
+      IndexName: empresas-v1
+      DataType: float32
+      Dimension: 1024
+      DistanceMetric: cosine
+    Metadata:
+      SamResourceId: EmpresasIndex
+  TiposReferenciaIndex:
+    Type: AWS::S3Vectors::Index
+    Properties:
+      VectorBucketArn:
+        Ref: EmpresasVectorBucket
+      IndexName: tipos-referencia-v1
+      DataType: float32
+      Dimension: 1024
+      DistanceMetric: cosine
+    Metadata:
+      SamResourceId: TiposReferenciaIndex
   LandingUsuariosTable:
     Type: AWS::Glue::Table
     Properties:
@@ -238,6 +270,22 @@ Resources:
             Type: decimal(20,2)
           - Name: qtd_socios
             Type: int
+          - Name: nome_fantasia
+            Type: string
+          - Name: natureza_juridica
+            Type: string
+          - Name: porte_empresa
+            Type: string
+          - Name: uf
+            Type: string
+          - Name: municipio
+            Type: string
+          - Name: cnae_principal
+            Type: string
+          - Name: cnae_principal_descricao
+            Type: string
+          - Name: cnaes_secundarios_descricao
+            Type: string
           - Name: empresa_raw
             Type: string
           - Name: _row_hash
@@ -366,6 +414,27 @@ Resources:
             - Fn::Sub: arn:aws:glue:${AWS::Region}:${AWS::AccountId}:database/*
             - Fn::Sub: arn:aws:glue:${AWS::Region}:${AWS::AccountId}:table/silver_db/*
             - Fn::Sub: arn:aws:glue:${AWS::Region}:${AWS::AccountId}:table/gold_db/*
+          - Sid: EmbeddingBedrock
+            Effect: Allow
+            Action: bedrock:InvokeModel
+            Resource:
+              Fn::Sub: arn:${AWS::Partition}:bedrock:${AWS::Region}::foundation-model/amazon.titan-embed-text-v2:0
+          - Sid: S3VectorsEtl
+            Effect: Allow
+            Action:
+            - s3vectors:PutVectors
+            - s3vectors:GetVectors
+            - s3vectors:QueryVectors
+            - s3vectors:ListVectors
+            - s3vectors:DeleteVectors
+            - s3vectors:GetIndex
+            Resource:
+            - Fn::GetAtt:
+              - EmpresasIndex
+              - IndexArn
+            - Fn::GetAtt:
+              - TiposReferenciaIndex
+              - IndexArn
     Metadata:
       SamResourceId: EtlJobRole
   EtlJob:
@@ -391,7 +460,16 @@ Resources:
           Fn::Sub: s3://${LakeBucket}
         --REGION:
           Ref: AWS::Region
-        --additional-python-modules: duckdb==1.2.2,pyiceberg[glue]==0.9.1,pyiceberg[pyarrow]==0.9.1
+        # boto3 recente: o do Glue Python Shell não conhece o s3vectors
+        --additional-python-modules: duckdb==1.2.2,pyiceberg[glue]==0.9.1,pyiceberg[pyarrow]==0.9.1,boto3==1.42.97
+        --VECTOR_BUCKET:   # o Ref do VectorBucket é o ARN; o código usa o nome
+          Fn::Sub: ${AWS::StackName}-vectors
+        --TAXONOMIA_URI:
+          Fn::Sub: s3://${LakeBucket}/artefatos/cadastro/tipos_empresa.json
+        --LIMIAR_MIN:
+          Ref: LimiarMin
+        --MARGEM_MIN:
+          Ref: MargemMin
     Metadata:
       SamResourceId: EtlJob
   AthenaWorkGroup:
@@ -530,10 +608,6 @@ Resources:
           Ref: EtlJob
         AlertTopicArn:
           Ref: AlertTopic
-        KnowledgeBaseId:
-          Ref: KnowledgeBaseId
-        DataSourceId:
-          Ref: DataSourceId
       Policies:
       - Statement:
         - Sid: Exportar
@@ -574,11 +648,6 @@ Resources:
           - glue:BatchStopJobRun
           Resource:
             Fn::Sub: arn:aws:glue:${AWS::Region}:${AWS::AccountId}:job/${EtlJob}
-        - Sid: SincronizarKB
-          Effect: Allow
-          Action: bedrock:StartIngestionJob
-          Resource:
-            Fn::Sub: arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:knowledge-base/*
         - Sid: Avisar
           Effect: Allow
           Action: sns:Publish
@@ -623,4 +692,21 @@ Outputs:
   AlertTopicArn:
     Value:
       Ref: AlertTopic
+  EmpresasVectorBucketName:
+    Description: Bucket do S3 Vectors (empresas-v1, tipos-referencia-v1); o passo de propostas cria nele o dou-atos-v1
+    Value:
+      Fn::Sub: ${AWS::StackName}-vectors
+  EmpresasVectorBucketArn:
+    Value:
+      Ref: EmpresasVectorBucket
+  EmpresasIndexArn:
+    Value:
+      Fn::GetAtt:
+      - EmpresasIndex
+      - IndexArn
+  TiposReferenciaIndexArn:
+    Value:
+      Fn::GetAtt:
+      - TiposReferenciaIndex
+      - IndexArn
 

@@ -1,28 +1,30 @@
 {
-  "Comment": "Lakehouse usuarios-cnpj: export do DynamoDB -> Landing -> Bronze -> Silver -> Gold -> docs da KB -> sync da KB",
+  "Comment": "Lakehouse usuarios-cnpj: export do DynamoDB -> Landing -> Bronze -> Silver -> Gold -> Embeddings -> Classificar",
   "StartAt": "TemDataInformada",
   "TimeoutSeconds": 14400,
   "States": {
     "TemDataInformada": {
       "Type": "Choice",
-      "Choices": [{ "Variable": "$.run_date", "IsPresent": true, "Next": "UsarDataInformada" }],
+      "Choices": [
+        {
+          "Variable": "$.run_date",
+          "IsPresent": true,
+          "Next": "UsarDataInformada"
+        }
+      ],
       "Default": "UsarDataDeHoje"
     },
     "UsarDataInformada": {
       "Type": "Pass",
       "Parameters": {
-        "run_date.$": "$.run_date",
-        "kb_id": "${KnowledgeBaseId}",
-        "kb_ds": "${DataSourceId}"
+        "run_date.$": "$.run_date"
       },
       "Next": "PedirExport"
     },
     "UsarDataDeHoje": {
       "Type": "Pass",
       "Parameters": {
-        "run_date.$": "States.ArrayGetItem(States.StringSplit($$.Execution.StartTime, 'T'), 0)",
-        "kb_id": "${KnowledgeBaseId}",
-        "kb_ds": "${DataSourceId}"
+        "run_date.$": "States.ArrayGetItem(States.StringSplit($$.Execution.StartTime, 'T'), 0)"
       },
       "Next": "PedirExport"
     },
@@ -36,11 +38,30 @@
         "ExportFormat": "DYNAMODB_JSON",
         "ExportType": "FULL_EXPORT"
       },
-      "ResultSelector": { "arn.$": "$.ExportDescription.ExportArn" },
+      "ResultSelector": {
+        "arn.$": "$.ExportDescription.ExportArn"
+      },
       "ResultPath": "$.export",
-      "Retry": [{ "ErrorEquals": ["DynamoDb.LimitExceededException", "DynamoDb.InternalServerErrorException"],
-                  "IntervalSeconds": 30, "MaxAttempts": 3, "BackoffRate": 2 }],
-      "Catch": [{ "ErrorEquals": ["States.ALL"], "ResultPath": "$.erro", "Next": "AvisarFalha" }],
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "DynamoDb.LimitExceededException",
+            "DynamoDb.InternalServerErrorException"
+          ],
+          "IntervalSeconds": 30,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "ResultPath": "$.erro",
+          "Next": "AvisarFalha"
+        }
+      ],
       "Next": "EsperarExport"
     },
     "EsperarExport": {
@@ -51,23 +72,46 @@
     "ConferirExport": {
       "Type": "Task",
       "Resource": "arn:aws:states:::aws-sdk:dynamodb:describeExport",
-      "Parameters": { "ExportArn.$": "$.export.arn" },
-      "ResultSelector": { "status.$": "$.ExportDescription.ExportStatus" },
+      "Parameters": {
+        "ExportArn.$": "$.export.arn"
+      },
+      "ResultSelector": {
+        "status.$": "$.ExportDescription.ExportStatus"
+      },
       "ResultPath": "$.export.estado",
-      "Catch": [{ "ErrorEquals": ["States.ALL"], "ResultPath": "$.erro", "Next": "AvisarFalha" }],
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "ResultPath": "$.erro",
+          "Next": "AvisarFalha"
+        }
+      ],
       "Next": "ExportPronto"
     },
     "ExportPronto": {
       "Type": "Choice",
       "Choices": [
-        { "Variable": "$.export.estado.status", "StringEquals": "COMPLETED", "Next": "Landing" },
-        { "Variable": "$.export.estado.status", "StringEquals": "FAILED", "Next": "ExportFalhou" }
+        {
+          "Variable": "$.export.estado.status",
+          "StringEquals": "COMPLETED",
+          "Next": "Landing"
+        },
+        {
+          "Variable": "$.export.estado.status",
+          "StringEquals": "FAILED",
+          "Next": "ExportFalhou"
+        }
       ],
       "Default": "EsperarExport"
     },
     "ExportFalhou": {
       "Type": "Pass",
-      "Parameters": { "Error": "ExportFailed", "Cause": "O export do DynamoDB terminou com status FAILED" },
+      "Parameters": {
+        "Error": "ExportFailed",
+        "Cause": "O export do DynamoDB terminou com status FAILED"
+      },
       "ResultPath": "$.erro",
       "Next": "AvisarFalha"
     },
@@ -76,12 +120,33 @@
       "Resource": "arn:aws:states:::glue:startJobRun.sync",
       "Parameters": {
         "JobName": "${GlueJobName}",
-        "Arguments": { "--STAGE": "landing", "--RUN_DATE.$": "$.run_date", "--EXPORT_ARN.$": "$.export.arn" }
+        "Arguments": {
+          "--STAGE": "landing",
+          "--RUN_DATE.$": "$.run_date",
+          "--EXPORT_ARN.$": "$.export.arn"
+        }
       },
       "ResultPath": null,
-      "Retry": [{ "ErrorEquals": ["Glue.ConcurrentRunsExceededException", "Glue.AWSGlueException"],
-                  "IntervalSeconds": 30, "MaxAttempts": 6, "BackoffRate": 1.5 }],
-      "Catch": [{ "ErrorEquals": ["States.ALL"], "ResultPath": "$.erro", "Next": "AvisarFalha" }],
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Glue.ConcurrentRunsExceededException",
+            "Glue.AWSGlueException"
+          ],
+          "IntervalSeconds": 30,
+          "MaxAttempts": 6,
+          "BackoffRate": 1.5
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "ResultPath": "$.erro",
+          "Next": "AvisarFalha"
+        }
+      ],
       "Next": "Bronze"
     },
     "Bronze": {
@@ -89,12 +154,32 @@
       "Resource": "arn:aws:states:::glue:startJobRun.sync",
       "Parameters": {
         "JobName": "${GlueJobName}",
-        "Arguments": { "--STAGE": "bronze", "--RUN_DATE.$": "$.run_date" }
+        "Arguments": {
+          "--STAGE": "bronze",
+          "--RUN_DATE.$": "$.run_date"
+        }
       },
       "ResultPath": null,
-      "Retry": [{ "ErrorEquals": ["Glue.ConcurrentRunsExceededException", "Glue.AWSGlueException"],
-                  "IntervalSeconds": 30, "MaxAttempts": 6, "BackoffRate": 1.5 }],
-      "Catch": [{ "ErrorEquals": ["States.ALL"], "ResultPath": "$.erro", "Next": "AvisarFalha" }],
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Glue.ConcurrentRunsExceededException",
+            "Glue.AWSGlueException"
+          ],
+          "IntervalSeconds": 30,
+          "MaxAttempts": 6,
+          "BackoffRate": 1.5
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "ResultPath": "$.erro",
+          "Next": "AvisarFalha"
+        }
+      ],
       "Next": "Silver"
     },
     "Silver": {
@@ -102,12 +187,32 @@
       "Resource": "arn:aws:states:::glue:startJobRun.sync",
       "Parameters": {
         "JobName": "${GlueJobName}",
-        "Arguments": { "--STAGE": "silver", "--RUN_DATE.$": "$.run_date" }
+        "Arguments": {
+          "--STAGE": "silver",
+          "--RUN_DATE.$": "$.run_date"
+        }
       },
       "ResultPath": null,
-      "Retry": [{ "ErrorEquals": ["Glue.ConcurrentRunsExceededException", "Glue.AWSGlueException"],
-                  "IntervalSeconds": 30, "MaxAttempts": 6, "BackoffRate": 1.5 }],
-      "Catch": [{ "ErrorEquals": ["States.ALL"], "ResultPath": "$.erro", "Next": "AvisarFalha" }],
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Glue.ConcurrentRunsExceededException",
+            "Glue.AWSGlueException"
+          ],
+          "IntervalSeconds": 30,
+          "MaxAttempts": 6,
+          "BackoffRate": 1.5
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "ResultPath": "$.erro",
+          "Next": "AvisarFalha"
+        }
+      ],
       "Next": "Gold"
     },
     "Gold": {
@@ -115,41 +220,103 @@
       "Resource": "arn:aws:states:::glue:startJobRun.sync",
       "Parameters": {
         "JobName": "${GlueJobName}",
-        "Arguments": { "--STAGE": "gold", "--RUN_DATE.$": "$.run_date" }
+        "Arguments": {
+          "--STAGE": "gold",
+          "--RUN_DATE.$": "$.run_date"
+        }
       },
       "ResultPath": null,
-      "Retry": [{ "ErrorEquals": ["Glue.ConcurrentRunsExceededException", "Glue.AWSGlueException"],
-                  "IntervalSeconds": 30, "MaxAttempts": 6, "BackoffRate": 1.5 }],
-      "Catch": [{ "ErrorEquals": ["States.ALL"], "ResultPath": "$.erro", "Next": "AvisarFalha" }],
-      "Next": "DocsDaKB"
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Glue.ConcurrentRunsExceededException",
+            "Glue.AWSGlueException"
+          ],
+          "IntervalSeconds": 30,
+          "MaxAttempts": 6,
+          "BackoffRate": 1.5
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "ResultPath": "$.erro",
+          "Next": "AvisarFalha"
+        }
+      ],
+      "Next": "Embeddings"
     },
-    "DocsDaKB": {
+    "Embeddings": {
       "Type": "Task",
       "Resource": "arn:aws:states:::glue:startJobRun.sync",
       "Parameters": {
         "JobName": "${GlueJobName}",
-        "Arguments": { "--STAGE": "kb_docs", "--RUN_DATE.$": "$.run_date" }
+        "Arguments": {
+          "--STAGE": "embeddings",
+          "--RUN_DATE.$": "$.run_date"
+        }
       },
       "ResultPath": null,
-      "Retry": [{ "ErrorEquals": ["Glue.ConcurrentRunsExceededException", "Glue.AWSGlueException"],
-                  "IntervalSeconds": 30, "MaxAttempts": 6, "BackoffRate": 1.5 }],
-      "Catch": [{ "ErrorEquals": ["States.ALL"], "ResultPath": "$.erro", "Next": "AvisarFalha" }],
-      "Next": "TemKnowledgeBase"
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Glue.ConcurrentRunsExceededException",
+            "Glue.AWSGlueException"
+          ],
+          "IntervalSeconds": 30,
+          "MaxAttempts": 6,
+          "BackoffRate": 1.5
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "ResultPath": "$.erro",
+          "Next": "AvisarFalha"
+        }
+      ],
+      "Next": "Classificar"
     },
-    "TemKnowledgeBase": {
-      "Type": "Choice",
-      "Choices": [{ "Variable": "$.kb_id", "StringEquals": "", "Next": "Sucesso" }],
-      "Default": "SincronizarKB"
-    },
-    "SincronizarKB": {
+    "Classificar": {
       "Type": "Task",
-      "Resource": "arn:aws:states:::aws-sdk:bedrockagent:startIngestionJob",
-      "Parameters": { "KnowledgeBaseId.$": "$.kb_id", "DataSourceId.$": "$.kb_ds" },
+      "Resource": "arn:aws:states:::glue:startJobRun.sync",
+      "Parameters": {
+        "JobName": "${GlueJobName}",
+        "Arguments": {
+          "--STAGE": "classificar",
+          "--RUN_DATE.$": "$.run_date"
+        }
+      },
       "ResultPath": null,
-      "Catch": [{ "ErrorEquals": ["States.ALL"], "ResultPath": "$.erro", "Next": "AvisarFalha" }],
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Glue.ConcurrentRunsExceededException",
+            "Glue.AWSGlueException"
+          ],
+          "IntervalSeconds": 30,
+          "MaxAttempts": 6,
+          "BackoffRate": 1.5
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "ResultPath": "$.erro",
+          "Next": "AvisarFalha"
+        }
+      ],
       "Next": "Sucesso"
     },
-    "Sucesso": { "Type": "Succeed" },
+    "Sucesso": {
+      "Type": "Succeed"
+    },
     "AvisarFalha": {
       "Type": "Task",
       "Resource": "arn:aws:states:::sns:publish",
@@ -161,6 +328,10 @@
       "ResultPath": null,
       "Next": "Falhou"
     },
-    "Falhou": { "Type": "Fail", "Error": "PipelineFalhou", "Cause": "Veja o estado AvisarFalha e os logs do job Glue" }
+    "Falhou": {
+      "Type": "Fail",
+      "Error": "PipelineFalhou",
+      "Cause": "Veja o estado AvisarFalha e os logs do job Glue"
+    }
   }
 }
