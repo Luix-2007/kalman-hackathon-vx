@@ -104,7 +104,8 @@ def test_avaliar_exige_resposta_valida():
 # ---------------------------------------------------------------- casos e fixtures
 
 CHAVES_DO_CASO = {"id", "descricao", "prompt", "deve_conter", "nao_deve_conter", "nao_deve_comecar_com",
-                  "consulta_deve_conter", "min_consultas", "max_consultas", "fixture_extra", "so_fixture"}
+                  "consulta_deve_conter", "min_consultas", "max_consultas", "fixture_extra", "so_fixture",
+                  "blocos_devem_ter", "sem_blocos"}
 
 
 def test_casos_bem_formados():
@@ -214,3 +215,36 @@ def test_runner_com_dados_reais_usa_a_consulta_original(agent, monkeypatch):
     monkeypatch.setattr(agent, "Agent", AgenteQueConsulta)
     _, _, consultas, _ = rodar.rodar_caso(agent, caso("tarefas_em_risco"), CNPJ, dados_reais=True)
     assert len(chamadas) == 1 and consultas[0]["linhas"] == []
+
+
+# ---------------------------------------------------------------- formato e blocos
+
+def test_formato_aceita_resumo_curto_em_texto_corrido():
+    assert av.conferir_formato("Há 2 tarefas em risco. A mais urgente vence em 10/11/2026.") == []
+
+
+@pytest.mark.parametrize("resposta", [
+    "Tarefas em risco:\n- Renovar a LO (10/11/2026)\n- Entregar a DCR",
+    "Tarefas:\n1. Renovar a LO\n2. Entregar a DCR",
+    "| Tarefa | Vencimento |\n|---|---|\n| Renovar a LO | 10/11/2026 |",
+    "## Resumo\nHá 2 tarefas.",
+    "A renovação **vence em 10/11/2026**.",
+    "x" * 601,
+])
+def test_formato_barra_lista_tabela_markdown_e_resposta_longa(resposta):
+    assert av.conferir_formato(resposta)
+
+
+def test_blocos_esperados_e_proibidos():
+    caso = {"blocos_devem_ter": ["tarefas"]}
+    assert av.conferir_blocos(caso, [{"tipo": "tarefas"}, {"tipo": "empresa"}]) == []
+    assert "faltou o bloco 'tarefas'" in av.conferir_blocos(caso, [{"tipo": "atos"}])[0]
+    assert av.conferir_blocos({"sem_blocos": True}, []) == []
+    assert av.conferir_blocos({"sem_blocos": True}, [{"tipo": "tarefas"}])
+
+
+def test_avaliar_usa_formato_e_blocos_da_saida():
+    caso = {"prompt": "oi", "blocos_devem_ter": ["tarefas"]}
+    assert av.avaliar(caso, {"resposta": "Resumo curto.", "blocos": [{"tipo": "tarefas"}]}, [], CNPJ) == []
+    falhas = " ".join(av.avaliar(caso, {"resposta": "- item\n- outro", "blocos": []}, [], CNPJ))
+    assert "formato" in falhas and "blocos_devem_ter" in falhas

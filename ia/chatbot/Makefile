@@ -1,4 +1,4 @@
-.PHONY: lint package deploy eval integracao clean
+.PHONY: lint package deploy eval integracao contrato sync-blocos clean
 
 REGION ?= us-east-1
 PIPELINE_STACK ?= lakehouse-pipeline
@@ -18,13 +18,13 @@ build/requirements.txt: ../pyproject.toml ../uv.lock
 	mkdir -p build
 	uv export --project .. --no-dev --no-hashes --no-emit-project -q -o build/requirements.txt
 
-# build/agente.zip = agent.py + dependências. A chave no S3 leva o hash do conteúdo, então
+# build/agente.zip = agent.py + blocos.py + dependências. A chave no S3 leva o hash do conteúdo, então
 # um agente novo vira uma atualização do runtime e um igual não muda nada.
-package: build/requirements.txt agent.py
+package: build/requirements.txt agent.py blocos.py
 	rm -rf build/pacote build/agente.zip
 	uv pip install -q --target build/pacote --python-platform aarch64-manylinux2014 --python-version 3.13 \
 	  -r build/requirements.txt
-	cp agent.py build/pacote/agent.py
+	cp agent.py blocos.py build/pacote/
 	cd build/pacote && zip -qr ../agente.zip .
 	@ls -lh build/agente.zip | awk '{print "pacote: " $$5}'
 
@@ -35,7 +35,7 @@ deploy: lint package
 	policy="$(call saida,$(PIPELINE_STACK),AcessoLeituraGoldPolicyArn)"; \
 	workgroup="$(call saida,$(PIPELINE_STACK),AthenaWorkGroupName)"; \
 	test -n "$$bucket" -a -n "$$policy" -a -n "$$workgroup" || { echo "Não achei os outputs dos stacks $(SAM_STACK) e $(PIPELINE_STACK)."; exit 1; }; \
-	hash=$$(cat agent.py build/requirements.txt | sha256sum | cut -c1-12); \
+	hash=$$(cat agent.py blocos.py build/requirements.txt | sha256sum | cut -c1-12); \
 	chave="chatbot-agent/agente-$$hash.zip"; \
 	aws s3 cp build/agente.zip "s3://$$bucket/$$chave" --region $(REGION) && \
 	sam deploy --parameter-overrides CodeBucket=$$bucket CodeKey=$$chave ModelId=$(MODEL_ID) \
@@ -51,6 +51,14 @@ eval:
 # make integracao ARGS="--com-llm" também chama o modelo (precisa de MODEL_ID).
 integracao:
 	uv run python tests/integracao_cadastro.py $(ARGS)
+
+# Contrato da resposta para o front: JSON Schema e exemplos (gerados do código; o teste confere)
+contrato:
+	uv run python contrato/gerar.py
+
+# A Lambda api/chatbot usa uma cópia de blocos.py (um teste confere que são iguais)
+sync-blocos:
+	cp blocos.py ../../api/chatbot/src/blocos.py
 
 clean:
 	rm -rf build .aws-sam

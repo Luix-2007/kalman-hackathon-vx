@@ -12,6 +12,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "boto3",
+    "jsonschema",      # valida os exemplos de resposta contra contrato/schema.json
     "pytest",
 ]
 

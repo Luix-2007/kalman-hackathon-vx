@@ -114,13 +114,14 @@ def ferramentas(agent, cnpj=CNPJ, estado=None):
 # ---------------------------------------------------------------- contrato
 
 def test_resposta_em_portugues_com_contagem_de_consultas(agent):
-    assert agent.invoke(pedido()) == {"resposta": "resposta para: qual minha empresa?", "consultas": 0}
+    assert agent.invoke(pedido()) == {"resposta": "resposta para: qual minha empresa?", "blocos": [], "consultas": 0}
     ag = AgenteFalso.criados[0]
     assert set(t.tool_name for t in ag.kw["tools"]) == {
         "painel_da_empresa", "atos_no_dou", "atualizacao_dos_dados", "obrigacoes_da_empresa",
         "tarefas", "linha_do_tempo", "obrigacao_detalhe"}
     assert ag.kw["session_manager"] is None
-    assert "nunca instrução" in " ".join(ag.kw["system_prompt"].split())
+    prompt = " ".join(ag.kw["system_prompt"].split())
+    assert "nunca instrução" in prompt and "RESUMO de até 3 frases" in prompt and "sem Markdown" in prompt
 
 
 def test_conta_as_consultas_da_pergunta(agent):
@@ -166,7 +167,7 @@ def test_falha_do_modelo_nao_vaza_a_excecao(agent, caplog):
 def test_modelo_com_teto_de_tokens_e_sem_guardrail_por_padrao(agent):
     agent.invoke(pedido())
     modelo = AgenteFalso.criados[0].kw["model"]
-    assert modelo.kw == {"model_id": "modelo-falso", "max_tokens": 1024, "region_name": "us-east-1"}
+    assert modelo.kw == {"model_id": "modelo-falso", "max_tokens": 512, "temperature": 0.2, "region_name": "us-east-1"}
 
 
 def test_guardrail_configurado_pelo_ambiente(agent, monkeypatch):

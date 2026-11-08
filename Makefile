@@ -9,7 +9,7 @@ FRONT_DIR := front/cadastro-teste
 FRONT_TARGETS := install env dev build check clean
 
 IA_DIR := ia
-IA_TARGETS := install test clean chatbot-deploy chatbot-eval chatbot-integracao chatbot-package
+IA_TARGETS := install test clean chatbot-deploy chatbot-eval chatbot-integracao chatbot-package chatbot-contrato chatbot-sync-blocos
 
 PIPELINE_DIR := pipeline
 PIPELINE_TARGETS := install test lint deploy clean \
@@ -48,6 +48,7 @@ help:
 	@echo "  make ia-chatbot-deploy MODEL_ID=...  agente do chatbot: runtime, role e Guardrail (stack chatbot-agent)"
 	@echo "  make ia-chatbot-eval  avalia o agente com o modelo (precisa de MODEL_ID; ARGS=--dados-reais usa o lake)"
 	@echo "  make ia-chatbot-integracao  cadastro -> lakehouse -> agente (AWS, roda o pipeline)"
+	@echo "  make ia-chatbot-contrato  regera o JSON Schema e os exemplos da resposta do chatbot (para o front)"
 	@echo "  make test          roda os testes de todas as partes"
 
 $(addprefix api-,$(API_TARGETS)): api-%:

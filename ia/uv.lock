@@ -343,6 +343,7 @@ dependencies = [
 [package.dev-dependencies]
 dev = [
     { name = "boto3" },
+    { name = "jsonschema" },
     { name = "pytest" },
 ]
 
@@ -355,6 +356,7 @@ requires-dist = [
 [package.metadata.requires-dev]
 dev = [
     { name = "boto3" },
+    { name = "jsonschema" },
     { name = "pytest" },
 ]
 
