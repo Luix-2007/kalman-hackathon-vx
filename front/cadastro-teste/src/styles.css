@@ -456,3 +456,17 @@ code { font-family: var(--k-fonte-mono); font-size: 0.9em; background: var(--k-c
 .pular { color: var(--k-tinta-3); font-size: var(--k-t-pequeno); }
 .etapa-opcional { margin-left: .45rem; }
 .matriz > .bloco { border-top: 0; padding-top: 0; }
+
+/* ══════════════ etapa 3 · revisão ══════════════ */
+.revisao { display: grid; gap: 1rem; }
+.revisao-item { display: grid; gap: .35rem; padding: 1.1rem 1.25rem; border: 1px solid var(--k-linha); border-radius: var(--k-raio-card); }
+.revisao-item-topo { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; margin-bottom: .25rem; }
+.revisao-item h3 { font-size: 1.05rem; letter-spacing: -0.02em; line-height: 1.3; }
+.revisao-linha { margin: 0; display: flex; align-items: center; gap: .45rem; flex-wrap: wrap; color: var(--k-grafite); }
+.revisao-estado { color: var(--k-tinta-2); font-size: var(--k-t-pequeno); }
+.revisao-nota { color: var(--k-tinta-3); font-size: var(--k-t-pequeno); }
+.concluido { display: flex; align-items: flex-start; gap: 1rem; padding: 1.25rem 1.4rem; border-radius: var(--k-raio-painel);
+  background: var(--k-grafite); color: var(--k-sobre-grafite); }
+.concluido strong { font-size: 1.15rem; font-weight: 600; }
+.concluido p { color: var(--k-sobre-grafite-2); margin-top: .25rem; font-size: .95rem; max-width: 60ch; }
+.concluido-marca { flex: none; width: 2rem; height: 2rem; display: grid; place-items: center; border-radius: 50%; background: var(--k-laranja); color: var(--k-branco); font-weight: 700; }

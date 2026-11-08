@@ -21,7 +21,7 @@ import { configured } from "./config";
 import { DEMO_EMAIL, demoApi, demoAtivo, demoAuth, demoLogado } from "./demo";
 import { Icone, Marca } from "./identidade/marca";
 import { MotivoAnimado } from "./MotivoAnimado";
-import { TelaMatriz } from "./TelaMatriz";
+import { ResumoMatriz, TelaMatriz } from "./TelaMatriz";
 
 // ─────────────────────────── integrações (reais ou demonstração) ───────────────────────────
 
@@ -812,13 +812,14 @@ function Dados({ cadastro, email, meuNome, onSalvo, onTrocar, onReconsultar, onC
 //
 //   1. Dados da empresa      conferir e confirmar (o botão fica no fim)
 //   2. Matriz de obrigações  liberada depois da confirmação; envio da planilha, análise em segundo plano
-//   3. Equipe (opcional)     liberada depois do envio da matriz (ou de "Pular esta etapa")
+//   3. Revisão               liberada depois do envio da matriz (ou de "Pular esta etapa"); resumo e "Concluir cadastro"
 //
+// A equipe (convites) saiu do fluxo: fica para a tela de Configurações (o componente Equipe continua abaixo).
 // Membro vê tudo liberado e só leitura: quem faz as etapas é quem criou a conta.
 
 type EstadoMatriz = "carregando" | "sem_envio" | "enviada";
 
-function Fluxo({ cadastro, email, meuNome, foco, onSalvo, onTrocar, onReconsultar, onSaiu }: {
+function Fluxo({ cadastro, email, meuNome, foco, onSalvo, onTrocar, onReconsultar }: {
   cadastro: Cadastro; email: string; meuNome: string; foco?: "matriz";
   onSalvo: (c: Cadastro) => void; onTrocar: () => void; onReconsultar: () => void; onSaiu: () => void;
 }) {
@@ -827,15 +828,19 @@ function Fluxo({ cadastro, email, meuNome, foco, onSalvo, onTrocar, onReconsulta
   const conferido = !!texto(d.conferido_em);
   const [verEmpresa, setVerEmpresa] = useState(!conferido);
   const [matriz, setMatriz] = useState<EstadoMatriz>("carregando");
-  const chavePulo = `kalman:pulou-matriz:${cadastro.cnpj}`;
-  const [pulou, setPulou] = useState(() => { try { return localStorage.getItem(chavePulo) === "1"; } catch { return false; } });
+  const [envios, setEnvios] = useState(0);
+  const lembrar = (chave: string) => { try { return localStorage.getItem(`${chave}:${cadastro.cnpj}`) === "1"; } catch { return false; } };
+  const guardar = (chave: string) => { try { localStorage.setItem(`${chave}:${cadastro.cnpj}`, "1"); } catch { /* sem storage: vale nesta visita */ } };
+  const [pulou, setPulou] = useState(() => lembrar("kalman:pulou-matriz"));
+  const [concluido, setConcluido] = useState(() => lembrar("kalman:cadastro-concluido"));
+  const etapaEmpresa = useRef<HTMLElement>(null);
   const etapaMatriz = useRef<HTMLElement>(null);
-  const etapaEquipe = useRef<HTMLElement>(null);
+  const etapaRevisao = useRef<HTMLElement>(null);
 
   const matrizLiberada = leitura || conferido;
   const matrizFeita = matriz === "enviada";
-  const equipeLiberada = leitura || (conferido && (matrizFeita || pulou));
-  const atual = leitura ? 0 : !conferido ? 1 : !(matrizFeita || pulou) ? 2 : 3;
+  const revisaoLiberada = leitura || (conferido && (matrizFeita || pulou));
+  const atual = leitura || concluido ? 0 : !conferido ? 1 : !(matrizFeita || pulou) ? 2 : 3;
 
   const rolar = (ref: { current: HTMLElement | null }) =>
     setTimeout(() => ref.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
@@ -843,22 +848,23 @@ function Fluxo({ cadastro, email, meuNome, foco, onSalvo, onTrocar, onReconsulta
   useEffect(() => { if (foco === "matriz" && matrizLiberada) rolar(etapaMatriz); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   function pular() {
-    try { localStorage.setItem(chavePulo, "1"); } catch { /* sem storage: vale só nesta visita */ }
+    guardar("kalman:pulou-matriz");
     setPulou(true);
-    rolar(etapaEquipe);
+    rolar(etapaRevisao);
   }
 
   const quem = texto(d.conferido_por_nome) || texto(d.conferido_por);
+  const ufs = Array.isArray(d.ufs_atuacao) ? (d.ufs_atuacao as unknown[]).map(String) : texto(d.ufs_atuacao).split(",").filter(Boolean);
 
   return (
     <div className="fluxo">
       <ol className="passos" aria-label="Etapas">
         <Passo n={1} nome="Dados da empresa" estado={conferido ? "feito" : atual === 1 ? "atual" : "livre"} />
         <Passo n={2} nome="Matriz de obrigações" estado={matrizFeita ? "feito" : atual === 2 ? "atual" : matrizLiberada ? "livre" : "bloqueado"} />
-        <Passo n={3} nome="Equipe" opcional estado={atual === 3 ? "atual" : equipeLiberada ? "livre" : "bloqueado"} />
+        <Passo n={3} nome="Revisão" estado={concluido ? "feito" : atual === 3 ? "atual" : revisaoLiberada ? "livre" : "bloqueado"} />
       </ol>
 
-      <section className="etapa" aria-labelledby="t-etapa-1">
+      <section ref={etapaEmpresa} className="etapa" aria-labelledby="t-etapa-1">
         <CabecaEtapa id="t-etapa-1" n={1} titulo="Dados da empresa" feito={conferido} />
         {conferido && !verEmpresa ? (
           <div className="etapa-resumo">
@@ -878,19 +884,57 @@ function Fluxo({ cadastro, email, meuNome, foco, onSalvo, onTrocar, onReconsulta
         <CabecaEtapa id="t-etapa-2" n={2} titulo="Matriz de obrigações" feito={matrizFeita} />
         {matrizLiberada ? (
           <TelaMatriz cadastro={cadastro}
-            onEnvio={(enviada, porAcao) => { setMatriz(enviada ? "enviada" : "sem_envio"); if (porAcao) rolar(etapaEquipe); }}
+            onEnvio={(enviada, porAcao) => {
+              setMatriz(enviada ? "enviada" : "sem_envio");
+              if (porAcao) { setEnvios((n) => n + 1); rolar(etapaRevisao); }
+            }}
             onPular={!leitura && !pulou && !matrizFeita && matriz !== "carregando" ? pular : undefined} />
         ) : (
           <p className="etapa-bloqueio">Confirme os dados da empresa para enviar a matriz.</p>
         )}
       </section>
 
-      <section ref={etapaEquipe} className="etapa" aria-labelledby="t-etapa-3" data-bloqueada={!equipeLiberada || undefined}>
-        <CabecaEtapa id="t-etapa-3" n={3} titulo="Equipe" opcional />
-        {equipeLiberada ? (
-          <Equipe key={cadastro.cnpj} cadastro={cadastro} onSaiu={onSaiu} />
+      <section ref={etapaRevisao} className="etapa" aria-labelledby="t-etapa-3" data-bloqueada={!revisaoLiberada || undefined}>
+        <CabecaEtapa id="t-etapa-3" n={3} titulo="Revisão" feito={concluido} />
+        {!revisaoLiberada ? (
+          <p className="etapa-bloqueio">Depois da matriz, você revisa tudo e conclui o cadastro.</p>
         ) : (
-          <p className="etapa-bloqueio">Depois da matriz, você convida quem precisa acompanhar as normas.</p>
+          <div className="revisao">
+            <div className="revisao-item" data-feito={conferido || undefined}>
+              <div className="revisao-item-topo">
+                <h3>Dados da empresa</h3>
+                <button type="button" className="link link-pequeno" onClick={() => { setVerEmpresa(true); rolar(etapaEmpresa); }}>Rever</button>
+              </div>
+              <p className="revisao-linha">
+                <span className="etapa-ok" aria-hidden="true">✓</span> {titulo(cadastro.empresa.razao_social)} · <span className="k-mono">{mascaraCnpj(cadastro.cnpj ?? "")}</span>
+              </p>
+              <p className="revisao-linha revisao-estado">
+                {ufs.length ? `Estados onde atua: ${ufs.join(", ")}` : "Estados onde atua: só a sede"}
+                {conferido && ` · conferidos em ${dataHoraBR(texto(d.conferido_em))}${quem ? ` por ${quem}` : ""}`}
+              </p>
+            </div>
+
+            <ResumoMatriz pulou={pulou} versao={envios} onAbrir={() => rolar(etapaMatriz)} />
+
+            <p className="revisao-nota">A equipe você convida depois, em Configurações.</p>
+
+            {concluido ? (
+              <div className="concluido" role="status">
+                <span className="concluido-marca" aria-hidden="true">✓</span>
+                <div>
+                  <strong>Cadastro concluído</strong>
+                  <p>O Kalman já lê o Diário Oficial todo dia para esta empresa. As normas que valem para ela e as tarefas da matriz aparecem no painel.</p>
+                </div>
+              </div>
+            ) : (
+              !leitura && (
+                <div className="confirmar">
+                  <span className="salvar-msg">Tudo certo?</span>
+                  <button className="k-btn" type="button" onClick={() => { guardar("kalman:cadastro-concluido"); setConcluido(true); }}>Concluir cadastro</button>
+                </div>
+              )
+            )}
+          </div>
         )}
       </section>
     </div>
@@ -917,7 +961,8 @@ function CabecaEtapa({ id, n, titulo: nome, feito, opcional }: { id: string; n: 
 
 // ─────────────────────────── equipe: dono, membros e convites ───────────────────────────
 
-function Equipe({ cadastro, onSaiu }: { cadastro: Cadastro; onSaiu: () => void }) {
+/** Equipe (dono, membros e convites). Saiu do fluxo do painel; vai para a tela de Configurações. */
+export function Equipe({ cadastro, onSaiu }: { cadastro: Cadastro; onSaiu: () => void }) {
   const [org, setOrg] = useState<Membros | null>(null);
   const [email, setEmail] = useState("");
   const [ocupado, setOcupado] = useState(false);

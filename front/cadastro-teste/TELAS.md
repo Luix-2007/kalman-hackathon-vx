@@ -96,15 +96,21 @@ Empresa de referência a partir de 07/11: **Light SESA, CNPJ 60.444.437/0001-46*
 - **Consultando:** "Lendo o CNPJ na Receita" com os segundos.
 
 **Com a empresa cadastrada, o painel é uma página só, em três etapas liberadas uma de cada vez** (componente `Fluxo`,
-indicador de etapas no topo): **1. Dados da empresa** → **2. Matriz de obrigações** → **3. Equipe (opcional)**. A ideia
+indicador de etapas no topo): **1. Dados da empresa** → **2. Matriz de obrigações** → **3. Revisão**. A ideia
 é a pessoa fazer uma coisa de cada vez; o que ainda não faz sentido aparece bloqueado, com o motivo.
 
 - Etapa 1 começa aberta. **Confirmar dados** fica no fim da conferência (não é mais barra fixa). Ao confirmar, a etapa
   vira um resumo ("✓ … conferidos em … por …", com "Rever os dados") e a página desce para a etapa 2.
 - Etapa 2 fica bloqueada até a confirmação. Quando a planilha é recebida, a etapa conta como feita na hora (a análise
-  não prende ninguém) e a página desce para a etapa 3. Quem não tem a planilha pode "Pular esta etapa" (lembrado no
+  não prende ninguém) e a página desce para a revisão. Quem não tem a planilha pode "Pular esta etapa" (lembrado no
   navegador, por CNPJ).
-- Etapa 3 fica bloqueada até a matriz ser enviada ou pulada.
+- Etapa 3 (**Revisão**) fica bloqueada até a matriz ser enviada ou pulada. Mostra um cartão da empresa (razão social,
+  CNPJ, estados onde atua, quem conferiu, "Rever") e um da matriz (planilha enviada e o estado da análise, que se
+  atualiza sozinho: "Análise em andamento" → "Análise concluída: N obrigações vigentes"; "Ver a matriz"), a nota "A
+  equipe você convida depois, em Configurações" e **Concluir cadastro** → cartão "Cadastro concluído" (lembrado no
+  navegador, por CNPJ; ainda não vai para a API).
+- A **equipe saiu do fluxo** (08/11): convidar e gerenciar membros fica para a tela de Configurações. O componente
+  `Equipe` continua no `App.tsx`, exportado, pronto para ser usado lá.
 - Membro: as três etapas liberadas e só leitura.
 - `/painel/matriz` abre a mesma página já na etapa 2.
 - **Etapa 1 · Conferência dos dados** (no lugar do formulário): cartão grafite (razão social, CNPJ, cidade/UF, ano de
@@ -124,7 +130,7 @@ indicador de etapas no topo): **1. Dados da empresa** → **2. Matriz de obriga�
     formulário (`src/campos.ts`: responsável, contato, endereço) não é mais usado pela tela.
 - **Membro:** a mesma conferência, só leitura (sem Confirmar, sem Trocar CNPJ, sem "consulte de novo"), com o aviso
   "Você é membro desta empresa: vê os dados, mas quem confirma é quem criou a conta."
-- **Etapa 3 · Equipe:** lista de e-mails, sem selos de papel; "(você)" na própria linha e "Convite pendente até dd/mm/aaaa" nos
+- **Equipe** (fora do fluxo; vai para Configurações): lista de e-mails, sem selos de papel; "(você)" na própria linha e "Convite pendente até dd/mm/aaaa" nos
   convites. Quem criou a conta convida pelo e-mail, remove membros e cancela convites; o membro pode sair da empresa. O
   convite **não envia e-mail** (é assim na API): a tela avisa para combinar com a pessoa.
 

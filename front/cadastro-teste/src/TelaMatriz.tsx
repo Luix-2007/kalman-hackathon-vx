@@ -419,3 +419,49 @@ function Obrigacoes({ obrigacoes, aviso }: { obrigacoes: Obrigacao[] | null; avi
     </section>
   );
 }
+
+// ─────────────────────────── resumo para a etapa de revisão do painel ───────────────────────────
+
+/** Uma linha sobre a matriz: planilha recebida e estado da análise (que roda em segundo plano). */
+export function ResumoMatriz({ pulou, versao, onAbrir }: { pulou: boolean; versao: number; onAbrir: () => void }) {
+  const [importacoes, setImportacoes] = useState<Importacao[] | null>(null);
+  const [processamento, setProcessamento] = useState<Processamento>(null);
+  const [vigentes, setVigentes] = useState<number | null>(null);
+
+  useEffect(() => {
+    let vivo = true;
+    const ler = async () => {
+      const r = await api.getImportacoes().catch(() => ({ importacoes: [] as Importacao[], processamento: null as Processamento }));
+      if (!vivo) return r.processamento;
+      setImportacoes(r.importacoes);
+      setProcessamento(r.processamento);
+      if (r.importacoes.length && r.processamento?.estado !== "RUNNING") {
+        const o = await api.getObrigacoes().catch(() => ({ obrigacoes: [] as Obrigacao[] }));
+        if (vivo) setVigentes(o.obrigacoes.filter((x) => x.vigente !== false && x.status !== "proposta").length);
+      }
+      return r.processamento;
+    };
+    ler();
+    const t = setInterval(async () => { const p = await ler(); if (p?.estado !== "RUNNING") clearInterval(t); }, demoAtivo ? 3000 : 30000);
+    return () => { vivo = false; clearInterval(t); };
+  }, [versao]);
+
+  if (importacoes === null) return <span className="carregando" role="status" aria-label="Carregando" />;
+  const ultima = importacoes[0];
+  let estado: ReactNode;
+  if (!ultima) estado = pulou ? "Etapa pulada: envie a planilha quando tiver." : "Nenhuma planilha enviada.";
+  else if (processamento?.estado === "RUNNING") estado = <><span className="cnpj-girando" aria-hidden="true" /> Análise em andamento, em segundo plano.</>;
+  else if (processamento?.estado === "SUCCEEDED") estado = vigentes ? `Análise concluída: ${vigentes} obrigações vigentes.` : "Análise concluída.";
+  else estado = "A análise roda de novo sozinha em até 1 hora.";
+
+  return (
+    <div className="revisao-item" data-feito={!!ultima || undefined}>
+      <div className="revisao-item-topo">
+        <h3>Matriz de obrigações</h3>
+        <button type="button" className="link link-pequeno" onClick={onAbrir}>{ultima ? "Ver a matriz" : "Enviar a planilha"}</button>
+      </div>
+      {ultima && <p className="revisao-linha"><span className="etapa-ok" aria-hidden="true">✓</span> {nomeOriginal(ultima.arquivo)} · enviada em {dataHora(ultima.enviado_em)}</p>}
+      <p className="revisao-linha revisao-estado">{estado}</p>
+    </div>
+  );
+}
