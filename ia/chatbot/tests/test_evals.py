@@ -248,3 +248,9 @@ def test_avaliar_usa_formato_e_blocos_da_saida():
     assert av.avaliar(caso, {"resposta": "Resumo curto.", "blocos": [{"tipo": "tarefas"}]}, [], CNPJ) == []
     falhas = " ".join(av.avaliar(caso, {"resposta": "- item\n- outro", "blocos": []}, [], CNPJ))
     assert "formato" in falhas and "blocos_devem_ter" in falhas
+
+
+def test_resumo_de_tempo_aponta_o_que_passaria_do_limite_da_api():
+    r = rodar.resumo_de_tempo([5.0, 6.0, 7.0, 30.0])
+    assert "pior 30.0s" in r and "1/4 acima de 26s" in r
+    assert "0/1 acima" in rodar.resumo_de_tempo([3.0])

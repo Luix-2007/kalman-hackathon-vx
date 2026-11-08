@@ -29,6 +29,9 @@ import json  # noqa: E402
 import avaliador  # noqa: E402
 import dados_fixture  # noqa: E402
 
+# A Lambda api/chatbot espera o agente por 26 s (ESPERA_AGENTE_S); acima disso o usuário vê 504.
+LIMITE_API_S = 26.0
+
 
 def carregar_casos(caminho: Path = AQUI / "casos.json") -> list[dict]:
     casos = json.loads(caminho.read_text(encoding="utf-8"))
@@ -55,6 +58,16 @@ def rodar_caso(agent, caso: dict, cnpj: str, dados_reais: bool) -> tuple[list[st
     return avaliador.avaliar(caso, saida, consultas, cnpj), saida, consultas, time.monotonic() - inicio
 
 
+def resumo_de_tempo(tempos: list[float]) -> str:
+    """p50, p95 e quantas execuções passariam do limite da API (o usuário veria 504)."""
+    ordenados = sorted(tempos)
+    def p(q):
+        return ordenados[min(len(ordenados) - 1, int(q * len(ordenados)))]
+    acima = sum(t > LIMITE_API_S for t in ordenados)
+    return (f"Tempo: p50 {p(0.5):.1f}s · p95 {p(0.95):.1f}s · pior {ordenados[-1]:.1f}s · "
+            f"{acima}/{len(ordenados)} acima de {LIMITE_API_S:.0f}s")
+
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--caso", action="append", help="id do caso (pode repetir); padrão: todos")
@@ -79,7 +92,7 @@ def main():
 
     print(f"Modelo {os.environ['MODEL_ID']} · {'Athena (dados reais)' if args.dados_reais else 'dados fixos'} · "
           f"CNPJ {args.cnpj} · {len(casos)} caso(s) × {args.repeticoes}\n")
-    reprovados = 0
+    reprovados, todos_os_tempos = 0, []
     for caso in casos:
         falhas_do_caso, tempos = [], []
         for i in range(args.repeticoes):
@@ -88,12 +101,17 @@ def main():
             if args.mostrar:
                 print(f"    [{i + 1}] {str(saida.get('resposta', saida))[:400]!r}")
             falhas_do_caso += [f"(execução {i + 1}) {f}" for f in falhas]
+        todos_os_tempos += tempos
         ok = not falhas_do_caso
         reprovados += not ok
-        print(f"  {'✅' if ok else '❌'} {caso['id']}  ({sum(tempos) / len(tempos):.1f}s)  {caso['descricao']}")
+        lento = " ⚠️ acima do limite da API" if max(tempos) > LIMITE_API_S else ""
+        print(f"  {'✅' if ok else '❌'} {caso['id']}  (média {sum(tempos) / len(tempos):.1f}s, "
+              f"pior {max(tempos):.1f}s{lento})  {caso['descricao']}")
         for f in falhas_do_caso:
             print(f"       - {f}")
     print(f"\n{'PASSOU' if not reprovados else 'FALHOU'}: {len(casos) - reprovados}/{len(casos)} casos")
+    if todos_os_tempos:
+        print(resumo_de_tempo(todos_os_tempos))
     sys.exit(1 if reprovados else 0)
 
 
