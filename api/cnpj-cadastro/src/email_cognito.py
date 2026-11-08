@@ -14,9 +14,10 @@ Regras do Cognito para a resposta:
 E-mail é HTML de 2005: tabelas, estilo inline, sem SVG, sem fonte obrigatória (Instrument Sans e IBM Plex Mono só
 quando o leitor tiver; senão caem em Helvetica/Arial e Consolas/Courier). Sem <title> (alguns leitores mostram o texto
 dele no topo do e-mail) e sem <h1> (alguns aplicam a fonte deles ao h1): o título é um <div> com estilo próprio.
-O logo é texto: imagem precisa de um endereço público (fica para quando o front estiver publicado).
+O logo é um PNG público (LOGO_URL, servido pelo front na Lovable); sem imagem, o alt "Kalman" aparece em branco.
 """
 
+import os
 from html import escape
 
 GRAFITE = "#0E1A24"
@@ -26,6 +27,9 @@ CEU_CLARO = "#EAF2F7"
 TINTA_2 = "#45525E"
 TINTA_3 = "#66727D"
 
+# Logo em PNG (Gmail e Outlook bloqueiam SVG), servido pelo front publicado na Lovable. O alt "Kalman" aparece em
+# branco sobre o grafite quando o cliente de e-mail bloqueia imagens. Trocar por LOGO_URL no ambiente da Lambda.
+LOGO_URL = os.environ.get("LOGO_URL", "https://kalman-vx.lovable.app/marca/kalman-email.png")
 SANS = "'Instrument Sans', 'Helvetica Neue', Helvetica, Arial, sans-serif"
 MONO = "'IBM Plex Mono', Consolas, 'Courier New', monospace"
 
@@ -77,12 +81,7 @@ def montar_html(titulo: str, texto: str, aviso: str, codigo: str) -> str:
 <tr><td align="center" style="padding:32px 16px;">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:520px;">
     <tr><td style="background:{GRAFITE};border-radius:14px 14px 0 0;padding:22px 32px;">
-      <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
-        <td style="font-family:{SANS};font-size:24px;line-height:24px;font-weight:700;letter-spacing:-0.5px;color:#FFFFFF;">kalman</td>
-        <td style="padding-left:6px;vertical-align:bottom;">
-          <div style="width:8px;height:8px;border-radius:4px;background:{LARANJA};font-size:0;line-height:0;margin-bottom:3px;">&nbsp;</div>
-        </td>
-      </tr></table>
+      <img src="{LOGO_URL}" width="160" height="42" alt="Kalman" style="display:block;border:0;outline:none;text-decoration:none;height:42px;width:160px;font-family:{SANS};font-size:22px;font-weight:700;color:#FFFFFF;">
     </td></tr>
     <tr><td style="background:#FFFFFF;padding:36px 32px 12px 32px;">
       <div role="heading" aria-level="1" style="margin:0 0 10px 0;font-family:{SANS};font-size:26px;line-height:30px;font-weight:600;letter-spacing:-0.6px;color:{GRAFITE};">{titulo}</div>

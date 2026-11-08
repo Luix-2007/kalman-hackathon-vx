@@ -7,7 +7,7 @@ depende de SES com remetente próprio, que ainda não existe. Mesmas decisões d
 
   - identidade "Laudo": grafite #0E1A24, céu #BFD9EA / #EAF2F7, branco; laranja #FF5A1F só no que pede ação
     (o que espera decisão, o botão e a tarefa atrasada);
-  - HTML de e-mail: tabelas, estilo inline, ~600 px, sem SVG, sem imagem (logo em texto), sem <title> e sem <h1>;
+  - HTML de e-mail: tabelas, estilo inline, ~600 px, sem SVG; o logo é um PNG público (LOGO_URL), sem <title> e sem <h1>;
     Instrument Sans e IBM Plex Mono só quando o leitor tiver, senão Helvetica/Arial e Consolas/Courier;
   - tudo que vem de dado passa por html.escape; link só http(s), qualquer outro esquema é descartado.
 
@@ -17,6 +17,7 @@ e-mail (a linha da leitura do DOU sozinha não justifica um aviso).
 
 import re
 from datetime import date, datetime
+import os
 from html import escape
 from urllib.parse import urlparse
 
@@ -27,6 +28,9 @@ CEU_CLARO = "#EAF2F7"
 TINTA_2 = "#45525E"
 TINTA_3 = "#66727D"
 
+# Logo em PNG (Gmail e Outlook bloqueiam SVG), servido pelo front publicado na Lovable. O alt "Kalman" aparece em
+# branco sobre o grafite quando o cliente de e-mail bloqueia imagens. Trocar por LOGO_URL no ambiente da Lambda.
+LOGO_URL = os.environ.get("LOGO_URL", "https://kalman-vx.lovable.app/marca/kalman-email.png")
 SANS = "'Instrument Sans', 'Helvetica Neue', Helvetica, Arial, sans-serif"
 MONO = "'IBM Plex Mono', Consolas, 'Courier New', monospace"
 
@@ -350,12 +354,7 @@ def montar_html(d: dict) -> str:
     <tr><td class="k-pad" style="background:{GRAFITE};border-radius:14px 14px 0 0;padding:22px 32px;">
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
         <td>
-          <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
-            <td style="font-family:{SANS};font-size:24px;line-height:24px;font-weight:700;letter-spacing:-0.5px;color:#FFFFFF;">kalman</td>
-            <td style="padding-left:6px;vertical-align:bottom;">
-              <div style="width:8px;height:8px;border-radius:4px;background:{LARANJA};font-size:0;line-height:0;margin-bottom:3px;">&nbsp;</div>
-            </td>
-          </tr></table>
+            <img src="{LOGO_URL}" width="160" height="42" alt="Kalman" style="display:block;border:0;outline:none;text-decoration:none;height:42px;width:160px;font-family:{SANS};font-size:22px;font-weight:700;color:#FFFFFF;">
         </td>
         <td align="right" style="font-family:{MONO};font-size:11px;line-height:14px;letter-spacing:1.5px;text-transform:uppercase;color:{CEU};">Aviso de mudanças</td>
       </tr></table>
